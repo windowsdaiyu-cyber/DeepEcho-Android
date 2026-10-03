@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.deepecho.android"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.deepecho.android"
         minSdk = 24
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0-alpha"
     }
