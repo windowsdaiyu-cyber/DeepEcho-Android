@@ -1,0 +1,86 @@
+name: DeepEcho Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deepecho-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Android source
+        uses: actions/checkout@v4
+
+      - name: Verify isolated DeepEcho Android repository
+        shell: bash
+        run: |
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+          grep -Fq 'rootProject.name = "DeepEchoAndroid"' settings.gradle.kts
+          grep -Fq 'applicationId = "com.deepecho.android"' app/build.gradle.kts
+          test ! -e main.js
+          test ! -e preload.js
+          test ! -e renderer.js
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: 'false'
+
+      - name: Setup Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Show toolchain versions
+        shell: bash
+        run: |
+          java -version
+          gradle --version
+          sdkmanager --list_installed | grep -E 'platforms;android-36|build-tools;36.0.0|platform-tools' || true
+
+      - name: Run Android repository guard
+        shell: bash
+        run: bash ci/verify-android-repo.sh
+
+      - name: Run bridge smoke test
+        shell: bash
+        run: node bridge/test.js
+
+      - name: Build DeepEcho debug APK
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Prepare APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/DeepEcho-Android-v0.1.0-alpha.apk
+          sha256sum dist/DeepEcho-Android-v0.1.0-alpha.apk > dist/DeepEcho-Android-v0.1.0-alpha.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepEcho-Android-v0.1.0-alpha-APK
+          path: |
+            dist/DeepEcho-Android-v0.1.0-alpha.apk
+            dist/DeepEcho-Android-v0.1.0-alpha.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
