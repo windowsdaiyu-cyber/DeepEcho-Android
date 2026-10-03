@@ -1,0 +1,3 @@
+DeepEcho Android Alpha follows the DeepEcho desktop project's GPL-3.0 license declaration.
+The bridge/ytdlp-smart.js file is carried from the user's DeepEcho v2.6.2 source baseline so the Alpha bridge uses the same recovery strategy.
+Third-party Android dependencies keep their respective licenses.
