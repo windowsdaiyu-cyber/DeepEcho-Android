@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">DEEP-ECHO</string>
+    <string name="playback_channel_name">DeepEcho playback</string>
+</resources>
