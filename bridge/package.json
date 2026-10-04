@@ -1,9 +1,0 @@
-{
-  "name": "deepecho-android-alpha-bridge",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Local DeepEcho Android alpha bridge",
-  "main": "server.js",
-  "scripts": { "start": "node server.js", "test": "node test.js" },
-  "license": "GPL-3.0"
-}
