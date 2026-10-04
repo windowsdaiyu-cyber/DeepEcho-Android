@@ -1,7 +1,10 @@
 package com.deepecho.mobile.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -37,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
@@ -77,7 +81,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -88,6 +97,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Song
@@ -97,7 +107,9 @@ import com.deepecho.mobile.data.TopArtist
 import com.deepecho.mobile.net.Downloads
 import com.deepecho.mobile.net.Lrclib
 import com.deepecho.mobile.net.Lyrics
+import com.deepecho.mobile.net.LyricLine
 import com.deepecho.mobile.overlay.FloatingLyricsController
+import com.deepecho.mobile.player.AudioReactive
 import com.deepecho.mobile.player.PlayerClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -184,6 +196,122 @@ private fun VerticalVolumeSlider(
     }
 }
 
+
+@Composable
+private fun ThemeActionBurst(
+    trigger: Int,
+    theme: String,
+    kind: String,
+    modifier: Modifier = Modifier
+) {
+    val progress = remember { Animatable(1f) }
+    LaunchedEffect(trigger) {
+        if (trigger > 0) {
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(720))
+        }
+    }
+    if (trigger <= 0 || progress.value >= 0.999f) return
+
+    val p = progress.value
+    val accent = accentFor(theme)
+    Canvas(modifier.size(72.dp)) {
+        val alpha = (1f - p).coerceIn(0f, 1f)
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val travel = size.minDimension * (0.12f + 0.34f * p)
+        when (theme) {
+            "Rose" -> {
+                repeat(7) { i ->
+                    val a = (i / 7f) * (Math.PI * 2.0) - Math.PI / 2.0
+                    val x = cx + kotlin.math.cos(a).toFloat() * travel
+                    val y = cy + kotlin.math.sin(a).toFloat() * travel
+                    val r = size.minDimension * (0.035f - 0.010f * p)
+                    val heart = Path().apply {
+                        moveTo(x, y + r * 0.9f)
+                        cubicTo(x - r * 1.45f, y - r * 0.05f, x - r * 0.85f, y - r * 1.25f, x, y - r * 0.45f)
+                        cubicTo(x + r * 0.85f, y - r * 1.25f, x + r * 1.45f, y - r * 0.05f, x, y + r * 0.9f)
+                        close()
+                    }
+                    drawPath(heart, accent.copy(alpha = alpha * 0.92f))
+                }
+            }
+            "Ocean" -> {
+                repeat(3) { ring ->
+                    drawCircle(
+                        accent.copy(alpha = alpha * (0.62f - ring * 0.13f)),
+                        radius = size.minDimension * (0.12f + p * (0.22f + ring * 0.08f)),
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 2.1f + ring)
+                    )
+                }
+                repeat(8) { i ->
+                    val a = i / 8f * (Math.PI * 2.0)
+                    drawCircle(
+                        accent.copy(alpha = alpha * 0.85f),
+                        2.4f + (i % 3),
+                        Offset(cx + kotlin.math.cos(a).toFloat() * travel, cy + kotlin.math.sin(a).toFloat() * travel)
+                    )
+                }
+            }
+            "Violet" -> {
+                repeat(10) { i ->
+                    val a = i / 10f * (Math.PI * 2.0) + p * 4.2f
+                    val r = travel * (0.72f + (i % 3) * 0.14f)
+                    drawCircle(
+                        accent.copy(alpha = alpha * 0.92f),
+                        2.1f + (i % 4) * 0.7f,
+                        Offset(cx + kotlin.math.cos(a).toFloat() * r, cy + kotlin.math.sin(a).toFloat() * r)
+                    )
+                }
+            }
+            "Emerald" -> {
+                repeat(8) { i ->
+                    val a = i / 8f * (Math.PI * 2.0) + if (kind == "download") 0.6 else 0.0
+                    val x = cx + kotlin.math.cos(a).toFloat() * travel
+                    val y = cy + kotlin.math.sin(a).toFloat() * travel
+                    drawOval(
+                        accent.copy(alpha = alpha * 0.88f),
+                        topLeft = Offset(x - 2.5f, y - 5.2f),
+                        size = androidx.compose.ui.geometry.Size(5f, 10.4f)
+                    )
+                }
+            }
+            "AMOLED" -> {
+                repeat(10) { i ->
+                    val a = i / 10f * (Math.PI * 2.0)
+                    val inner = size.minDimension * 0.12f
+                    drawLine(
+                        Color.White.copy(alpha = alpha * 0.90f),
+                        Offset(cx + kotlin.math.cos(a).toFloat() * inner, cy + kotlin.math.sin(a).toFloat() * inner),
+                        Offset(cx + kotlin.math.cos(a).toFloat() * travel, cy + kotlin.math.sin(a).toFloat() * travel),
+                        2f,
+                        StrokeCap.Round
+                    )
+                }
+            }
+            else -> {
+                repeat(9) { i ->
+                    val a = i / 9f * (Math.PI * 2.0)
+                    val x = cx + kotlin.math.cos(a).toFloat() * travel
+                    val y = cy + kotlin.math.sin(a).toFloat() * travel
+                    drawCircle(accent.copy(alpha = alpha * 0.95f), 2.2f + (i % 3), Offset(x, y))
+                    if (i % 2 == 0) {
+                        drawLine(
+                            accent.copy(alpha = alpha * 0.72f),
+                            Offset(x - 5f, y), Offset(x + 5f, y), 1.8f, StrokeCap.Round
+                        )
+                        drawLine(
+                            accent.copy(alpha = alpha * 0.72f),
+                            Offset(x, y - 5f), Offset(x, y + 5f), 1.8f, StrokeCap.Round
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ───────────────────────── MINI PLAYER ─────────────────────────
 
 @Composable
@@ -239,8 +367,8 @@ fun MiniPlayer(onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(onClick = { PlayerClient.seekBy(-10_000) }) {
-                Icon(Icons.Filled.Replay10, "Back 10 seconds")
+            IconButton(onClick = { PlayerClient.prev() }) {
+                Icon(Icons.Filled.SkipPrevious, "Previous song")
             }
             if (PlayerClient.buffering) {
                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
@@ -276,6 +404,130 @@ fun MiniPlayer(onClick: () -> Unit) {
 // ───────────────────────── FULL PLAYER ─────────────────────────
 
 @Composable
+private fun AmbientPlayerBackdrop(modifier: Modifier = Modifier) {
+    val enabled by Settings.ambientMode.collectAsState()
+    val theme by Settings.theme.collectAsState()
+    if (!enabled) return
+
+    val playing = PlayerClient.isPlaying
+    val transition = rememberInfiniteTransition(label = "ambient_player_theme")
+    val drift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (Math.PI * 2.0).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (playing) 7200 else 11200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ambient_drift"
+    )
+    val pulse by transition.animateFloat(
+        initialValue = 0.62f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1900), repeatMode = RepeatMode.Reverse),
+        label = "ambient_pulse"
+    )
+    val accent = accentFor(theme)
+    val energy = if (playing) 1f else 0.58f
+
+    Canvas(modifier) {
+        // Full-player atmosphere: no hard circles. This is deliberately softer than Live Theme
+        // because controls and lyrics sit directly above it.
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    accent.copy(alpha = 0.125f * pulse),
+                    Color.Transparent,
+                    accent.copy(alpha = 0.080f * pulse)
+                ),
+                start = Offset(size.width * 0.08f, 0f),
+                end = Offset(size.width * 0.92f, size.height)
+            )
+        )
+
+        when (theme) {
+            "Ocean" -> {
+                for (row in 0 until 3) {
+                    var prev: Offset? = null
+                    val base = size.height * (0.22f + row * 0.24f)
+                    for (i in 0..18) {
+                        val x = size.width * i / 18f
+                        val y = base + kotlin.math.sin(drift * (0.7f + row * 0.08f) + i * 0.45f) * (5f + row * 2f)
+                        val now = Offset(x, y)
+                        prev?.let { drawLine(accent.copy(alpha = 0.095f * energy), it, now, 1.2f) }
+                        prev = now
+                    }
+                }
+                for (i in 0 until 34) {
+                    val x0 = ((i * 31) % 101) / 100f
+                    val y0 = ((i * 53) % 103) / 102f
+                    val travel = (y0 + drift / (2f * Math.PI.toFloat()) * (0.18f + (i % 5) * 0.03f)) % 1f
+                    val x = x0 * size.width + kotlin.math.sin(drift + i) * 5f
+                    val y = (1f - travel) * size.height
+                    drawCircle(accent.copy(alpha = (0.11f + 0.17f * pulse) * energy), 1f + (i % 4) * 0.6f, Offset(x, y))
+                }
+            }
+            "Violet" -> {
+                val center = Offset(size.width * 0.52f, size.height * 0.40f)
+                for (i in 0 until 38) {
+                    val angle = drift * (0.18f + (i % 4) * 0.025f) + i * 0.73f
+                    val rx = size.width * (0.10f + (i % 9) * 0.028f)
+                    val ry = size.height * (0.04f + (i % 7) * 0.016f)
+                    drawCircle(
+                        accent.copy(alpha = (0.11f + 0.18f * pulse) * energy),
+                        1f + (i % 4) * 0.55f,
+                        Offset(center.x + kotlin.math.cos(angle) * rx, center.y + kotlin.math.sin(angle) * ry)
+                    )
+                }
+            }
+            "Rose" -> {
+                for (i in 0 until 36) {
+                    val x0 = ((i * 43) % 103) / 102f
+                    val y0 = ((i * 59) % 107) / 106f
+                    val travel = (y0 + drift / (2f * Math.PI.toFloat()) * (0.13f + (i % 5) * 0.02f)) % 1f
+                    val x = x0 * size.width + kotlin.math.sin(drift * 0.5f + i) * 7f
+                    val y = (1f - travel) * size.height
+                    drawCircle(accent.copy(alpha = (0.11f + 0.19f * pulse) * energy), 1f + (i % 5) * 0.55f, Offset(x, y))
+                }
+            }
+            "Emerald" -> {
+                for (i in 0 until 36) {
+                    val x = (((i * 47) % 109) / 108f) * size.width + kotlin.math.cos(drift * 0.55f + i) * 6f
+                    val y0 = ((i * 71) % 113) / 112f
+                    val travel = (y0 + drift / (2f * Math.PI.toFloat()) * (0.14f + (i % 6) * 0.022f)) % 1f
+                    val y = (1f - travel) * size.height
+                    val glow = kotlin.math.abs(kotlin.math.sin(drift * 0.7f + i * 0.33f))
+                    drawCircle(accent.copy(alpha = (0.095f + 0.21f * glow) * energy), 1f + (i % 4) * 0.65f, Offset(x, y))
+                }
+            }
+            "AMOLED" -> {
+                for (i in 0 until 42) {
+                    val x = (((i * 37) % 113) / 112f) * size.width
+                    val y = (((i * 67) % 127) / 126f) * size.height
+                    val twinkle = kotlin.math.abs(kotlin.math.sin(drift * 0.33f + i))
+                    drawCircle(Color.White.copy(alpha = (0.06f + twinkle * 0.18f) * energy), 0.8f + (i % 3) * 0.5f, Offset(x, y))
+                }
+            }
+            else -> {
+                for (i in 0 until 38) {
+                    val x0 = ((i * 41) % 107) / 106f
+                    val y0 = ((i * 73) % 109) / 108f
+                    val travel = (y0 + drift / (2f * Math.PI.toFloat()) * (0.12f + (i % 6) * 0.022f)) % 1f
+                    val x = x0 * size.width + kotlin.math.cos(drift * 0.44f + i) * 7f
+                    val y = (1f - travel) * size.height
+                    drawCircle(accent.copy(alpha = (0.11f + 0.18f * pulse) * energy), 1f + (i % 5) * 0.55f, Offset(x, y))
+                    if (i % 12 == 0) {
+                        drawLine(accent.copy(alpha = 0.105f), Offset(x - 5f, y + 5f), Offset(x + 5f, y - 5f), 1f)
+                    }
+                }
+            }
+        }
+
+        // Foreground-readability guard; ambient remains visible but never washes out text.
+        drawRect(Color.Black.copy(alpha = if (theme == "AMOLED") 0.02f else 0.045f))
+    }
+}
+
+@Composable
 fun PlayerScreen(onClose: () -> Unit) {
     val song = PlayerClient.currentSong
     var showLyrics by remember { mutableStateOf(false) }
@@ -289,6 +541,10 @@ fun PlayerScreen(onClose: () -> Unit) {
     var lyricsNeedsSync by remember(song?.url) { mutableStateOf(false) }
     var lyricsSyncRequest by remember(song?.url) { mutableIntStateOf(0) }
     val autoThemeWithSong by Settings.autoThemeWithSong.collectAsState()
+    val ambientMode by Settings.ambientMode.collectAsState()
+    val theme by Settings.theme.collectAsState()
+    var likeBurst by remember(song?.url) { mutableIntStateOf(0) }
+    var downloadBurst by remember(song?.url) { mutableIntStateOf(0) }
     val suggestedTheme = PlayerClient.currentSuggestedTheme ?: remember(song?.url) { song?.let(ThemeAdvisor::suggest) }
     val queueRevision = PlayerClient.queueRevision
     val queueCount = remember(queueRevision) {
@@ -309,13 +565,14 @@ fun PlayerScreen(onClose: () -> Unit) {
         return
     }
 
-    Column(
-        Modifier.fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .pointerInput(Unit) { detectTapGestures { } }
-            .statusBarsPadding().navigationBarsPadding()
-            .padding(horizontal = 20.dp)
-    ) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        AmbientPlayerBackdrop(Modifier.fillMaxSize())
+        Column(
+            Modifier.fillMaxSize()
+                .pointerInput(Unit) { detectTapGestures { } }
+                .statusBarsPadding().navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+        ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.KeyboardArrowDown, "Close", Modifier.size(32.dp)) }
             Text("Now playing", Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -371,21 +628,33 @@ fun PlayerScreen(onClose: () -> Unit) {
                     }
                 }
                 val isLiked = liked.any { it.url == song.url }
-                IconButton(onClick = { Store.toggleLike(song) }) {
-                    Icon(
-                        if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        "Like",
-                        tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
+                Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
+                    ThemeActionBurst(likeBurst, theme, "like", Modifier.fillMaxSize())
+                    IconButton(onClick = {
+                        Store.toggleLike(song)
+                        likeBurst += 1
+                    }) {
+                        Icon(
+                            if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            "Like",
+                            tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
                 val downloaded = downloads.any { it.song.url == song.url }
                 val p = progress[song.url]
-                when {
-                    p != null -> CircularProgressIndicator(progress = { p }, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    downloaded -> IconButton(onClick = { Store.removeDownload(song.url) }) {
-                        Icon(Icons.Filled.DownloadDone, "Downloaded — tap to remove", tint = MaterialTheme.colorScheme.primary)
+                Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
+                    ThemeActionBurst(downloadBurst, theme, "download", Modifier.fillMaxSize())
+                    when {
+                        p != null -> CircularProgressIndicator(progress = { p }, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        downloaded -> IconButton(onClick = { Store.removeDownload(song.url) }) {
+                            Icon(Icons.Filled.DownloadDone, "Downloaded — tap to remove", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        else -> IconButton(onClick = {
+                            downloadBurst += 1
+                            Downloads.start(song)
+                        }) { Icon(Icons.Filled.Download, "Download") }
                     }
-                    else -> IconButton(onClick = { Downloads.start(song) }) { Icon(Icons.Filled.Download, "Download") }
                 }
             }
         }
@@ -516,9 +785,18 @@ fun PlayerScreen(onClose: () -> Unit) {
                         else MaterialTheme.colorScheme.primary
                     )
                 }
+                IconButton(onClick = { Settings.setAmbientMode(!ambientMode) }) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        if (ambientMode) "Ambient mode on" else "Ambient mode off",
+                        tint = if (ambientMode) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         } else {
             Spacer(Modifier.height(3.dp))
+        }
         }
     }
 }
@@ -536,17 +814,34 @@ private fun estimatedLineDurationMs(text: String): Long {
     return (words * 430L).coerceIn(1400L, 6200L)
 }
 
-private fun activeWordIndex(text: String, startMs: Long, endMs: Long, positionMs: Long): Int {
-    val words = Regex("\\S+").findAll(text).toList()
-    if (words.isEmpty()) return -1
-    val safeEnd = endMs.coerceAtLeast(startMs + 500L)
-    val fraction = ((positionMs - startMs).toFloat() / (safeEnd - startMs).toFloat()).coerceIn(0f, 0.9999f)
+private fun activeWordIndex(
+    line: LyricLine,
+    displayText: String,
+    endMs: Long,
+    positionMs: Long,
+    allowExactWordTiming: Boolean
+): Int {
+    val displayWords = Regex("\\S+").findAll(displayText).toList()
+    if (displayWords.isEmpty()) return -1
 
-    // Line-level lyrics do not contain true word timestamps. Give longer words slightly
-    // more of the line duration instead of splitting every word equally.
-    val weights = words.map { match ->
-        val letters = match.value.count { it.isLetterOrDigit() }.coerceAtLeast(1)
-        (0.85f + letters.coerceAtMost(10) * 0.14f)
+    // Enhanced-LRC timestamps are used directly whenever the displayed text is still the
+    // original script. Romanization can change word count, so it safely falls back to weighting.
+    if (allowExactWordTiming && line.words.isNotEmpty()) {
+        val exact = line.words.indexOfLast { it.timeMs <= positionMs }
+        if (exact >= 0) return exact.coerceAtMost(displayWords.lastIndex)
+    }
+
+    val safeEnd = endMs.coerceAtLeast(line.timeMs + 500L)
+    val fraction = ((positionMs - line.timeMs).toFloat() / (safeEnd - line.timeMs).toFloat()).coerceIn(0f, 0.9999f)
+
+    // Line-level fallback: punctuation and longer words receive a little more time, which
+    // tracks sung phrasing better than equal-width splitting while remaining deterministic.
+    val weights = displayWords.map { match ->
+        val token = match.value
+        val letters = token.count { it.isLetterOrDigit() }.coerceAtLeast(1)
+        val pause = if (token.endsWith(",") || token.endsWith(";") || token.endsWith(":")) 0.35f
+        else if (token.endsWith("!") || token.endsWith("?") || token.endsWith(".")) 0.55f else 0f
+        0.78f + letters.coerceAtMost(12) * 0.145f + pause
     }
     val total = weights.sum().coerceAtLeast(0.01f)
     val target = total * fraction
@@ -555,7 +850,7 @@ private fun activeWordIndex(text: String, startMs: Long, endMs: Long, positionMs
         running += weights[i]
         if (target < running) return i
     }
-    return words.lastIndex
+    return displayWords.lastIndex
 }
 
 private fun wordGlowText(
@@ -641,6 +936,7 @@ fun LyricsView(
     val activeColor = lyricsActiveFor(theme, liveTheme)
     val mainColor = lyricsMainFor(theme, liveTheme)
     val mutedColor = lyricsMutedFor(theme, liveTheme)
+    val reactiveEnergy by AudioReactive.energy.collectAsState()
     val lyricGlowTransition = rememberInfiniteTransition(label = "lyrics_glow")
     val lyricGlow by lyricGlowTransition.animateFloat(
         initialValue = 0.62f,
@@ -649,8 +945,24 @@ fun LyricsView(
         label = "lyrics_glow_strength"
     )
 
+    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) AudioReactive.attachIfPermitted(context)
+    }
     val overlayLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (FloatingLyricsController.canDraw(context)) FloatingLyricsController.start(context)
+        if (FloatingLyricsController.canDraw(context)) {
+            FloatingLyricsController.start(context)
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                AudioReactive.attachIfPermitted(context)
+            } else {
+                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    LaunchedEffect(overlayEnabled, song.url) {
+        if (overlayEnabled && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            AudioReactive.attachIfPermitted(context)
+        }
     }
 
     LaunchedEffect(song.url) {
@@ -658,13 +970,12 @@ fun LyricsView(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = maxHeight < 470.dp
-        val lyricFont = if (compact) 20.sp else 23.sp
-        val activeLyricFont = if (compact) 22.sp else 25.sp
-        val lyricLineHeight = if (compact) 26.sp else 31.sp
+        val compact = maxHeight < 500.dp || maxWidth < 360.dp
+        val lyricFont = if (compact) 18.sp else 22.sp
+        val activeLyricFont = if (compact) 21.sp else 25.sp
+        val lyricLineHeight = if (compact) 24.sp else 31.sp
 
         Column(Modifier.fillMaxSize()) {
-            // Visualizer intentionally removed. Lyrics get the reclaimed vertical space.
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 34.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -676,24 +987,32 @@ fun LyricsView(
                     color = activeColor,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    if (overlayEnabled) "Floating lyrics: ON" else "Floating lyrics",
-                    color = activeColor,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable {
-                            if (overlayEnabled) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Floating lyrics",
+                        color = activeColor,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Switch(
+                        checked = overlayEnabled,
+                        onCheckedChange = { wantOn ->
+                            if (!wantOn) {
                                 FloatingLyricsController.stop(context)
                             } else if (FloatingLyricsController.canDraw(context)) {
                                 FloatingLyricsController.start(context)
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    AudioReactive.attachIfPermitted(context)
+                                } else {
+                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             } else {
                                 overlayLauncher.launch(FloatingLyricsController.permissionIntent(context))
                             }
                         }
-                        .padding(horizontal = 6.dp, vertical = 6.dp)
-                )
+                    )
+                }
             }
 
             Row(
@@ -807,6 +1126,12 @@ fun LyricsView(
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Text(
+                                if (s.lyrics.estimatedSync) "Smart sync • estimated" else "${s.lyrics.source} • ${s.lyrics.confidence}% match",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (s.lyrics.estimatedSync) mutedColor else activeColor,
+                                modifier = Modifier.weight(1f)
+                            )
                             Text("Timing", style = MaterialTheme.typography.bodySmall, color = mutedColor)
                             Text(
                                 "−0.5s",
@@ -845,7 +1170,13 @@ fun LyricsView(
                                 val endMs = lines.getOrNull(i + 1)?.timeMs
                                     ?: (l.timeMs + estimatedLineDurationMs(displayText))
                                 val wordIndex = if (isActive && wordByWord) {
-                                    activeWordIndex(displayText, l.timeMs, endMs, pos)
+                                    activeWordIndex(
+                                        line = l,
+                                        displayText = displayText,
+                                        endMs = endMs,
+                                        positionMs = pos,
+                                        allowExactWordTiming = !romanized
+                                    )
                                 } else {
                                     -1
                                 }
@@ -872,6 +1203,14 @@ fun LyricsView(
                                             vertical = if (compact) 4.dp else 6.dp,
                                             horizontal = 3.dp
                                         )
+                                        .graphicsLayer {
+                                            if (isActive) {
+                                                val e = reactiveEnergy.coerceIn(0f, 1f)
+                                                scaleX = 1f + e * 0.018f
+                                                scaleY = 1f + e * 0.045f
+                                                translationY = -e * 3.2f
+                                            }
+                                        }
                                 ) {
                                     Text(
                                         shownText,
@@ -887,12 +1226,12 @@ fun LyricsView(
                                             shadow = when {
                                                 isActive -> Shadow(
                                                     color = activeColor.copy(
-                                                        alpha = (0.72f + 0.26f * lyricGlow).coerceIn(0f, 1f)
+                                                        alpha = (0.66f + 0.20f * lyricGlow + 0.18f * reactiveEnergy).coerceIn(0f, 1f)
                                                     ),
                                                     blurRadius = if (wordByWord) {
-                                                        19f + 10f * lyricGlow
+                                                        19f + 9f * lyricGlow + 8f * reactiveEnergy
                                                     } else {
-                                                        21f + 12f * lyricGlow
+                                                        21f + 10f * lyricGlow + 9f * reactiveEnergy
                                                     }
                                                 )
                                                 liveTheme -> Shadow(

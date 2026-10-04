@@ -101,12 +101,6 @@ fun App() {
                 Bus.messages.collect { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show() }
             }
             LaunchedEffect(Unit) {
-                while (true) {
-                    delay(250)
-                    PlayerClient.tick()
-                }
-            }
-            LaunchedEffect(Unit) {
                 delay(1200)
                 AppUpdater.autoCheck(ctx)
             }

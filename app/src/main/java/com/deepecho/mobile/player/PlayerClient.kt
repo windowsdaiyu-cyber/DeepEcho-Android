@@ -3,6 +3,7 @@ package com.deepecho.mobile.player
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,6 +55,12 @@ object PlayerClient {
     private val queueReasons = ConcurrentHashMap<String, String>()
     private var sleepJob: Job? = null
 
+    // Listening stats are accumulated in memory and flushed in coarse batches.
+    // This avoids JSON/file writes on the 250 ms playback ticker and keeps Home scrolling smooth.
+    private var statsLastTickAt = 0L
+    private var statsSong: Song? = null
+    private var statsAccumulatedMs = 0L
+
     var item by mutableStateOf<MediaItem?>(null)
     var isPlaying by mutableStateOf(false)
     var buffering by mutableStateOf(false)
@@ -74,9 +81,11 @@ object PlayerClient {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            flushListeningStats()
             mediaItem?.mediaId?.let { songs[it] }?.let { song ->
                 queueRevision++
                 Store.addHistory(song)
+                Store.recordPlayStart(song)
                 val suggestion = ThemeAdvisor.suggest(song, Settings.theme.value)
                 currentSuggestedTheme = suggestion
                 if (Settings.autoThemeWithSong.value) {
@@ -142,6 +151,46 @@ object PlayerClient {
         isPlaying = c.isPlaying
         buffering = c.playbackState == Player.STATE_BUFFERING
         volume = c.volume.coerceIn(0f, 1f)
+        AudioReactive.updateFallback(positionMs, isPlaying)
+        collectListeningStats(c)
+    }
+
+    private fun collectListeningStats(c: Player) {
+        val now = SystemClock.elapsedRealtime()
+        val song = currentSong
+        if (song == null) {
+            statsLastTickAt = now
+            return
+        }
+
+        if (statsSong?.url != song.url) {
+            flushListeningStats()
+            statsSong = song
+            statsLastTickAt = now
+            return
+        }
+
+        if (statsLastTickAt == 0L) {
+            statsLastTickAt = now
+            return
+        }
+
+        val delta = (now - statsLastTickAt).coerceIn(0L, 1_500L)
+        statsLastTickAt = now
+        if (c.isPlaying && c.playbackState == Player.STATE_READY && !buffering) {
+            statsAccumulatedMs += delta
+            if (statsAccumulatedMs >= 15_000L) flushListeningStats()
+        } else if (statsAccumulatedMs >= 3_000L) {
+            flushListeningStats()
+        }
+    }
+
+    private fun flushListeningStats() {
+        val song = statsSong
+        val amount = statsAccumulatedMs
+        if (song != null && amount > 0L) Store.recordListening(song, amount)
+        statsAccumulatedMs = 0L
+        statsLastTickAt = SystemClock.elapsedRealtime()
     }
 
     private fun toItem(song: Song): MediaItem {

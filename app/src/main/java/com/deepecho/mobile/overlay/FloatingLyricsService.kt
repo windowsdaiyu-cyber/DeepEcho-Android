@@ -3,7 +3,12 @@ package com.deepecho.mobile.overlay
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Shader
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -19,6 +24,7 @@ import android.widget.TextView
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.net.Lrclib
 import com.deepecho.mobile.net.Lyrics
+import com.deepecho.mobile.player.AudioReactive
 import com.deepecho.mobile.player.PlayerClient
 import com.deepecho.mobile.ui.Romanizer
 import kotlinx.coroutines.CoroutineScope
@@ -63,9 +69,11 @@ class FloatingLyricsService : Service() {
     private var lyricView: TextView? = null
     private var nextView: TextView? = null
     private var playPauseView: TextView? = null
+    private var graphView: ReactiveGraphView? = null
     private var songUrl: String? = null
     private var lyrics: Lyrics? = null
     private var lastLine: String? = null
+    private var lastCaptureAttemptAt: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -74,12 +82,110 @@ class FloatingLyricsService : Service() {
             return
         }
         FloatingLyricsController.enabled.value = true
+        AudioReactive.attachIfPermitted(this)
         createOverlay()
         loop = scope.launch {
             while (isActive) {
                 refreshLyrics()
-                delay(200)
+                delay(120)
             }
+        }
+    }
+
+    /**
+     * PC-style transparent waveform for Floating Lyrics only.
+     * The view never paints a background/card: only a faint baseline, soft glow and a thin
+     * theme-coloured waveform are drawn over the existing overlay. This keeps the graph feeling
+     * like the desktop floating-lyrics visualizer instead of a row of opaque equalizer bars.
+     */
+    private inner class ReactiveGraphView(context: Context, private val colors: OverlayColors) : View(context) {
+        private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        private val baselinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val path = Path()
+        private var values: List<Float> = List(24) { 0.08f }
+        private var strength: Float = 0.08f
+
+        init {
+            setBackgroundColor(Color.TRANSPARENT)
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        }
+
+        fun setSignal(next: List<Float>, energy: Float) {
+            values = if (next.isEmpty()) List(24) { 0.08f } else next
+            strength = energy.coerceIn(0f, 1f)
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (width <= 1 || height <= 1 || values.isEmpty()) return
+
+            val centerY = height * 0.52f
+            val usableHeight = height * 0.72f
+            val count = values.size.coerceAtLeast(2)
+            val step = width.toFloat() / (count - 1).toFloat()
+            val phase = ((PlayerClient.positionMs % 2400L) / 2400f) * Math.PI.toFloat() * 2f
+
+            baselinePaint.color = Color.argb(
+                (22 + strength * 28).toInt().coerceIn(18, 56),
+                Color.red(colors.accent),
+                Color.green(colors.accent),
+                Color.blue(colors.accent)
+            )
+            baselinePaint.strokeWidth = dp(1).coerceAtLeast(1).toFloat()
+            canvas.drawLine(0f, centerY, width.toFloat(), centerY, baselinePaint)
+
+            path.reset()
+            values.forEachIndexed { index, raw ->
+                val x = index * step
+                val signed = if (index % 2 == 0) 1f else -1f
+                val naturalWave = kotlin.math.sin((index * 0.72f + phase).toDouble()).toFloat() * 0.18f
+                val amplitude = (raw.coerceIn(0.025f, 1f) * 0.78f + naturalWave).coerceIn(-1f, 1f)
+                val y = centerY - signed * amplitude * usableHeight * (0.24f + strength * 0.24f)
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+
+            // Wide, low-alpha glow first. This is intentionally translucent and has no fill.
+            glowPaint.color = Color.argb(
+                (26 + strength * 66).toInt().coerceIn(22, 96),
+                Color.red(colors.accent),
+                Color.green(colors.accent),
+                Color.blue(colors.accent)
+            )
+            glowPaint.strokeWidth = dp(6).toFloat()
+            glowPaint.setShadowLayer(dp(7).toFloat(), 0f, 0f, colors.accent)
+            canvas.drawPath(path, glowPaint)
+
+            // Crisp PC-style waveform line above the glow.
+            linePaint.shader = LinearGradient(
+                0f,
+                0f,
+                width.toFloat(),
+                0f,
+                intArrayOf(
+                    Color.argb(84, Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent)),
+                    Color.argb((132 + strength * 88).toInt().coerceIn(132, 220), Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent)),
+                    Color.argb(92, Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent))
+                ),
+                null,
+                Shader.TileMode.CLAMP
+            )
+            linePaint.strokeWidth = dp(2).coerceAtLeast(2).toFloat()
+            linePaint.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+            canvas.drawPath(path, linePaint)
+            linePaint.shader = null
         }
     }
 
@@ -130,6 +236,11 @@ class FloatingLyricsService : Service() {
             maxLines = 1
             gravity = Gravity.CENTER
             setPadding(0, dp(3), 0, 0)
+        }
+
+        val graph = ReactiveGraphView(this, colors).apply {
+            // Transparent PC-style waveform: no card/background, only the reactive line/glow.
+            alpha = 0.82f
         }
 
         fun controlButton(label: String, description: String, action: () -> Unit): TextView =
@@ -213,6 +324,13 @@ class FloatingLyricsService : Service() {
             }
         )
         container.addView(lyric)
+        container.addView(
+            graph,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)).apply {
+                topMargin = dp(2)
+                bottomMargin = 0
+            }
+        )
         container.addView(next)
         container.addView(controls)
 
@@ -220,9 +338,11 @@ class FloatingLyricsService : Service() {
         lyricView = lyric
         nextView = next
         playPauseView = playPause
+        graphView = graph
 
+        val overlayWidth = kotlin.math.min(dp(340), (resources.displayMetrics.widthPixels - dp(18)).coerceAtLeast(dp(260)))
         val lp = WindowManager.LayoutParams(
-            dp(340),
+            overlayWidth,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -263,6 +383,14 @@ class FloatingLyricsService : Service() {
 
     private suspend fun refreshLyrics() {
         playPauseView?.text = if (PlayerClient.isPlaying) "Ⅱ" else "▶"
+        val now = System.currentTimeMillis()
+        if (!AudioReactive.realCapture.value && now - lastCaptureAttemptAt > 2_000L) {
+            lastCaptureAttemptAt = now
+            AudioReactive.attachIfPermitted(this)
+        }
+        AudioReactive.updateFallback(PlayerClient.positionMs, PlayerClient.isPlaying)
+        graphView?.setSignal(AudioReactive.bands.value, AudioReactive.energy.value)
+        applyReactiveLyricMotion()
         val song = PlayerClient.currentSong
         if (song == null) {
             titleView?.text = "DEEP-ECHO"
@@ -315,6 +443,28 @@ class FloatingLyricsService : Service() {
         nextView?.text = shownNext
     }
 
+    private fun applyReactiveLyricMotion() {
+        val view = lyricView ?: return
+        val colors = themeColors(Settings.theme.value)
+        val e = if (PlayerClient.isPlaying) AudioReactive.energy.value.coerceIn(0.04f, 1f) else 0.03f
+        view.scaleX = 1f + e * 0.024f
+        view.scaleY = 1f + e * 0.052f
+        view.translationY = -dp(3) * e
+        val alpha = (105 + e * 120).toInt().coerceIn(90, 225)
+        view.setShadowLayer(dp(6).toFloat() + dp(8).toFloat() * e, 0f, 0f, Color.argb(alpha, Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent)))
+        if (view.width > 0) {
+            val phase = ((PlayerClient.positionMs % 1500L) / 1500f).coerceIn(0f, 1f)
+            val start = -view.width.toFloat() + phase * view.width * 2.4f
+            view.paint.shader = LinearGradient(
+                start, 0f, start + view.width * 0.78f, 0f,
+                intArrayOf(colors.main, colors.accent, Color.WHITE, colors.accent, colors.main),
+                floatArrayOf(0f, 0.28f, 0.5f, 0.72f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        view.invalidate()
+    }
+
     private fun setLyricAnimated(text: String) {
         val view = lyricView ?: return
         if (lastLine == text) return
@@ -323,14 +473,10 @@ class FloatingLyricsService : Service() {
         view.text = text
         view.alpha = 0.18f
         view.translationY = dp(8).toFloat()
-        view.scaleX = 0.985f
-        view.scaleY = 0.985f
         view.animate()
             .alpha(1f)
             .translationY(0f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(220L)
+            .setDuration(240L)
             .start()
     }
 
@@ -351,6 +497,8 @@ class FloatingLyricsService : Service() {
         loop?.cancel()
         root?.let { view -> runCatching { windowManager?.removeView(view) } }
         root = null
+        graphView = null
+        AudioReactive.release()
         FloatingLyricsController.enabled.value = false
         super.onDestroy()
     }

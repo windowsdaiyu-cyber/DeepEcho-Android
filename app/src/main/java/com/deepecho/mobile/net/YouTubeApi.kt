@@ -2,9 +2,11 @@ package com.deepecho.mobile.net
 
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Song
+import com.deepecho.mobile.data.TopArtist
 import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
@@ -35,7 +37,10 @@ object YouTubeApi {
     private val yt get() = ServiceList.YouTube
 
     private val searchCache = ConcurrentHashMap<String, Pair<Long, List<Song>>>()
+    private val videoSearchCache = ConcurrentHashMap<String, Pair<Long, List<Song>>>()
     private val playlistSearchCache = ConcurrentHashMap<String, Pair<Long, List<RemotePlaylist>>>()
+    private val albumSearchCache = ConcurrentHashMap<String, Pair<Long, List<RemotePlaylist>>>()
+    private val artistSearchCache = ConcurrentHashMap<String, Pair<Long, List<TopArtist>>>()
     private val playlistOpenCache = ConcurrentHashMap<String, Pair<Long, List<Song>>>()
     private val streamCache = ConcurrentHashMap<String, Pair<Long, Resolved>>()
     private val inFlightResolves = ConcurrentHashMap<String, CompletableFuture<Resolved>>()
@@ -58,19 +63,61 @@ object YouTubeApi {
         }?.url
     }
 
+    /** Default discovery search: music songs first, videos as a safe fallback. */
     fun search(query: String): List<Song> {
+        val songs = searchSongs(query)
+        return if (songs.isNotEmpty()) songs else searchVideos(query)
+    }
+
+    /** Dedicated song result bucket used by the categorized Search screen. */
+    fun searchSongs(query: String): List<Song> {
         val key = query.trim().lowercase()
         searchCache[key]?.let { if (System.currentTimeMillis() - it.first < 10 * 60_000) return it.second }
-
-        var result = try {
-            doSearch(query, YoutubeSearchQueryHandlerFactory.MUSIC_SONGS)
-        } catch (e: Exception) {
-            emptyList()
-        }
-        if (result.isEmpty()) result = doSearch(query, YoutubeSearchQueryHandlerFactory.VIDEOS)
-
+        val result = runCatching { doSearch(query, YoutubeSearchQueryHandlerFactory.MUSIC_SONGS) }
+            .getOrDefault(emptyList())
         if (result.isNotEmpty()) searchCache[key] = System.currentTimeMillis() to result
         return result
+    }
+
+    /** Dedicated video result bucket so Search no longer labels every hit as a song. */
+    fun searchVideos(query: String): List<Song> {
+        val key = query.trim().lowercase()
+        videoSearchCache[key]?.let { if (System.currentTimeMillis() - it.first < 10 * 60_000) return it.second }
+        val result = runCatching { doSearch(query, YoutubeSearchQueryHandlerFactory.MUSIC_VIDEOS) }
+            .getOrDefault(emptyList())
+            .ifEmpty {
+                runCatching { doSearch(query, YoutubeSearchQueryHandlerFactory.VIDEOS) }
+                    .getOrDefault(emptyList())
+            }
+        if (result.isNotEmpty()) videoSearchCache[key] = System.currentTimeMillis() to result
+        return result
+    }
+
+    /** Dedicated YouTube Music artist bucket, with normal channel search as a fallback. */
+    fun searchArtists(query: String, limit: Int = 12): List<TopArtist> {
+        val key = query.trim().lowercase()
+        artistSearchCache[key]?.let {
+            if (System.currentTimeMillis() - it.first < 15 * 60_000) return it.second.take(limit)
+        }
+        fun fetch(filter: String): List<TopArtist> = runCatching {
+            val handler = yt.searchQHFactory.fromQuery(query, listOf(filter), "")
+            val info = SearchInfo.getInfo(yt, handler)
+            info.relatedItems
+                .filterIsInstance<ChannelInfoItem>()
+                .map { item ->
+                    TopArtist(
+                        name = item.name ?: "Artist",
+                        thumb = bestThumbnail(item.thumbnails),
+                        plays = item.subscriberCount.coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                    )
+                }
+                .filter { it.name.isNotBlank() }
+        }.getOrDefault(emptyList())
+
+        val result = fetch(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS)
+            .ifEmpty { fetch(YoutubeSearchQueryHandlerFactory.CHANNELS) }
+        if (result.isNotEmpty()) artistSearchCache[key] = System.currentTimeMillis() to result
+        return result.take(limit)
     }
 
     private fun doSearch(query: String, filter: String): List<Song> {
@@ -90,37 +137,44 @@ object YouTubeApi {
             }
     }
 
+    /** YouTube Music album bucket used by the Albums search chip. */
+    fun searchAlbums(query: String, limit: Int = 10): List<RemotePlaylist> {
+        val key = query.trim().lowercase()
+        albumSearchCache[key]?.let {
+            if (System.currentTimeMillis() - it.first < 15 * 60_000) return it.second.take(limit)
+        }
+
+        val result = searchPlaylistLike(query, YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS)
+        if (result.isNotEmpty()) albumSearchCache[key] = System.currentTimeMillis() to result
+        return result.take(limit)
+    }
+
     fun searchPlaylists(query: String, limit: Int = 10): List<RemotePlaylist> {
         val key = query.trim().lowercase()
         playlistSearchCache[key]?.let {
             if (System.currentTimeMillis() - it.first < 15 * 60_000) return it.second.take(limit)
         }
 
-        val result = runCatching {
-            val handler = yt.searchQHFactory.fromQuery(
-                query,
-                listOf(YoutubeSearchQueryHandlerFactory.MUSIC_PLAYLISTS),
-                ""
-            )
-            val info = SearchInfo.getInfo(yt, handler)
-            info.relatedItems
-                .filterIsInstance<PlaylistInfoItem>()
-                .map {
-                    RemotePlaylist(
-                        url = it.url,
-                        title = it.name ?: "Playlist",
-                        uploader = it.uploaderName ?: "YouTube Music",
-                        thumb = bestThumbnail(it.thumbnails),
-                        songCount = it.streamCount
-                    )
-                }
-        }.getOrDefault(emptyList())
-
-        if (result.isNotEmpty()) {
-            playlistSearchCache[key] = System.currentTimeMillis() to result
-        }
+        val result = searchPlaylistLike(query, YoutubeSearchQueryHandlerFactory.MUSIC_PLAYLISTS)
+        if (result.isNotEmpty()) playlistSearchCache[key] = System.currentTimeMillis() to result
         return result.take(limit)
     }
+
+    private fun searchPlaylistLike(query: String, filter: String): List<RemotePlaylist> = runCatching {
+        val handler = yt.searchQHFactory.fromQuery(query, listOf(filter), "")
+        val info = SearchInfo.getInfo(yt, handler)
+        info.relatedItems
+            .filterIsInstance<PlaylistInfoItem>()
+            .map {
+                RemotePlaylist(
+                    url = it.url,
+                    title = it.name ?: "YouTube Music",
+                    uploader = it.uploaderName ?: "YouTube Music",
+                    thumb = bestThumbnail(it.thumbnails),
+                    songCount = it.streamCount
+                )
+            }
+    }.getOrDefault(emptyList())
 
     fun openPlaylist(url: String): List<Song> {
         playlistOpenCache[url]?.let {

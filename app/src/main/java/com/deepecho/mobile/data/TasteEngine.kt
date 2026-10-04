@@ -70,35 +70,91 @@ object TasteEngine {
     }
 
     /** Fast local typeahead: no network request is fired on every keystroke. */
-    fun searchSuggestions(input: String, extraSongs: List<Song> = emptyList(), limit: Int = 6): List<String> {
-        val q = input.trim()
+    fun searchSuggestions(input: String, extraSongs: List<Song> = emptyList(), limit: Int = 8): List<String> {
+        val q = input.trim().replace(Regex("\\s+"), " ")
         if (q.length < 2) return emptyList()
         val ql = q.lowercase()
         val source = (signals() + extraSongs).distinctBy { it.url }
-        val raw = linkedSetOf<String>()
+        val recentSearches = Store.searchHistory.value
+        val favoriteArtists = topArtists(12).map { it.name }
 
-        topArtists(12).forEach { raw += it.name }
-        source.take(160).forEach { song ->
-            if (song.artist.isNotBlank()) raw += song.artist
-            if (song.title.isNotBlank()) raw += song.title
+        data class Candidate(val text: String, val weight: Int)
+        val candidates = mutableListOf<Candidate>()
+
+        recentSearches.forEachIndexed { index, text ->
+            candidates += Candidate(text, 240 - index * 3)
+        }
+        favoriteArtists.forEachIndexed { index, artist ->
+            candidates += Candidate(artist, 210 - index * 2)
+            candidates += Candidate("$artist songs", 185 - index)
+        }
+        source.take(180).forEachIndexed { index, song ->
+            if (song.title.isNotBlank()) candidates += Candidate(song.title, 175 - (index / 12))
+            if (song.artist.isNotBlank()) candidates += Candidate(song.artist, 165 - (index / 12))
+            if (song.title.isNotBlank() && song.artist.isNotBlank()) {
+                candidates += Candidate("${song.title} ${song.artist}", 150 - (index / 14))
+            }
         }
 
-        val prefix = raw.filter { it.lowercase().startsWith(ql) && !it.equals(q, true) }
-        val contains = raw.filter {
-            !it.lowercase().startsWith(ql) && it.lowercase().contains(ql) && !it.equals(q, true)
+        val generated = buildList {
+            add(Candidate("$q songs", 145))
+            add(Candidate("$q official song", 142))
+            add(Candidate("$q album", 139))
+            add(Candidate("$q artist", 136))
+            add(Candidate("$q playlist", 132))
+            favoriteArtists.firstOrNull()?.let { add(Candidate("$q $it", 128)) }
         }
 
-        return buildList {
-            addAll(prefix)
-            addAll(contains)
-            add("$q songs")
-            add("$q hits")
-            add("$q playlist")
-            add("$q romantic songs")
-        }.map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase() }
+        return (candidates + generated)
+            .mapNotNull { candidate ->
+                val text = candidate.text.trim().replace(Regex("\\s+"), " ")
+                if (text.isBlank() || text.equals(q, true)) return@mapNotNull null
+                val lower = text.lowercase()
+                val matchBoost = when {
+                    lower.startsWith(ql) -> 120
+                    lower.split(' ').any { it.startsWith(ql) } -> 95
+                    lower.contains(ql) -> 70
+                    ql.split(' ').all { token -> token.length < 2 || lower.contains(token) } -> 36
+                    else -> return@mapNotNull null
+                }
+                Triple(text, candidate.weight + matchBoost, lower)
+            }
+            .sortedByDescending { it.second }
+            .distinctBy { it.third }
+            .map { it.first }
             .take(limit)
+    }
+
+    /** Taste-aware compact mood/genre chips on Home. */
+    fun moodQuery(label: String): String {
+        val artists = topArtists(3).map { it.name }
+        val taste = artists.joinToString(" ")
+        val mood = when (label.lowercase()) {
+            "feel good" -> "feel good happy uplifting songs"
+            "romance" -> "romantic love songs"
+            "relax" -> "relax calm soothing chill songs"
+            "bad mood" -> "sad emotional heartbreak songs"
+            "energize" -> "energetic upbeat power songs"
+            "party" -> "party dance hits"
+            "workout" -> "workout gym high energy songs"
+            "focus" -> "focus concentration soft music"
+            "chill" -> "chill lofi acoustic songs"
+            "bollywood" -> "Bollywood hits"
+            "pop" -> "pop hits"
+            "devotional" -> "devotional peaceful songs"
+            else -> "$label songs"
+        }
+        return listOf(taste, mood).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    fun latestReleaseQuery(): String {
+        val year = Calendar.getInstance().get(Calendar.YEAR)
+        val artists = topArtists(3).map { it.name }
+        return if (artists.isNotEmpty()) {
+            "${artists.joinToString(" ")} latest new songs releases $year"
+        } else {
+            "latest new music releases $year India"
+        }
     }
 
     fun homeMixes(history: List<Song>, liked: List<Song>): List<HomeMix> {

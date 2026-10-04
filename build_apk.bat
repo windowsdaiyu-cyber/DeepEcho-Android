@@ -7,11 +7,11 @@ exit /b
 
 :RUN
 setlocal EnableExtensions EnableDelayedExpansion
-title DEEP-ECHO Mobile v1.9.0 - AUTO-UPDATE BUILDER
+title DEEP-ECHO Mobile v1.10.2 - FEATURE TEST BUILDER
 cd /d "%~dp0"
 
 echo ==============================================
-echo   DEEP-ECHO Mobile v1.9.0 - AUTO-UPDATE BUILDER
+echo   DEEP-ECHO Mobile v1.10.2 - FEATURE TEST BUILDER
 echo   Java 17 locked - live Gradle output
 echo ==============================================
 echo.
@@ -20,7 +20,7 @@ set "BUILD_LOG=%~dp0deepecho-build.log"
 set "JAVA17="
 set "GRADLE_BAT="
 set "APK=app\build\outputs\apk\debug\app-debug.apk"
-set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.9.0-AUTO-UPDATE.apk"
+set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.10.2-FEATURE-TEST.apk"
 
 echo [0/6] Builder started successfully.
 echo Working folder:
@@ -94,50 +94,21 @@ echo [OK] Android SDK ready.
 echo.
 
 rem ------------------------------------------------------------
-rem 3. Permanent signing key (critical for Android updates)
+rem 3. Permanent signing key (MUST be the stable v1.9.0 key)
 rem ------------------------------------------------------------
 echo [3/6] Checking permanent signing key...
 
 set "SIGNING_HOME=%USERPROFILE%\DeepEcho-Android-Local"
 set "STABLE_KEY=%SIGNING_HOME%\deepecho.keystore"
-set "OLD_KEY="
 
-if not exist "%SIGNING_HOME%" mkdir "%SIGNING_HOME%" >nul 2>&1
-
-rem If this project already has a key, preserve it permanently first.
-if not exist "%STABLE_KEY%" if exist "deepecho.keystore" (
-    echo Preserving current project signing key...
-    copy /Y "deepecho.keystore" "%STABLE_KEY%" >nul
-)
-
-rem v1.8.0 was the last pre-updater build. Reuse its key automatically when possible
-rem so v1.9.0 can install directly over the currently installed app.
 if not exist "%STABLE_KEY%" (
-    echo Looking for the v1.8.0 signing key in Downloads...
-    for /f "usebackq delims=" %%K in (`powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$root=Join-Path $env:USERPROFILE 'Downloads'; if(Test-Path $root){Get-ChildItem -Path $root -Filter 'deepecho.keystore' -File -Recurse -ErrorAction SilentlyContinue ^| Where-Object {$_.FullName -match 'v1\.8\.0'} ^| Sort-Object LastWriteTime -Descending ^| Select-Object -First 1 -ExpandProperty FullName}"`) do set "OLD_KEY=%%K"
-    if defined OLD_KEY (
-        echo Found previous key:
-        echo !OLD_KEY!
-        copy /Y "!OLD_KEY!" "%STABLE_KEY%" >nul
-    )
-)
-
-rem New install only: create one permanent key and keep using it forever.
-if not exist "%STABLE_KEY%" (
-    echo No previous key found. Creating ONE permanent DeepEcho signing key...
-    "%JAVA_HOME%\bin\keytool.exe" -genkeypair ^
-        -keystore "%STABLE_KEY%" ^
-        -alias deepecho ^
-        -keyalg RSA ^
-        -keysize 2048 ^
-        -validity 36500 ^
-        -storepass deepecho ^
-        -keypass deepecho ^
-        -dname "CN=DEEP-ECHO"
-    if errorlevel 1 (
-        echo [ERROR] Permanent keystore creation failed.
-        goto FAIL_NO_BUILD
-    )
+    echo.
+    echo [ERROR] Stable DEEP-ECHO Android signing key missing:
+    echo %STABLE_KEY%
+    echo.
+    echo Test APK ko NEW key se sign nahi kiya jayega.
+    echo v1.9.0 ke upar install/update test ke liye SAME permanent key required hai.
+    goto FAIL_NO_BUILD
 )
 
 copy /Y "%STABLE_KEY%" "deepecho.keystore" >nul
@@ -146,14 +117,9 @@ if errorlevel 1 (
     goto FAIL_NO_BUILD
 )
 
-if not exist "deepecho.keystore" (
-    echo [ERROR] Project signing key is missing.
-    goto FAIL_NO_BUILD
-)
-
-echo [OK] Permanent signing key ready.
-echo Stable key: %STABLE_KEY%
-echo IMPORTANT: Is file ko delete mat karna. Future APK updates isi key se sign honge.
+echo [OK] Stable v1.9.0 signing key ready.
+echo Key remains permanently outside the project at:
+echo %STABLE_KEY%
 echo.
 
 rem ------------------------------------------------------------

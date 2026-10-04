@@ -50,6 +50,7 @@ fun SettingsScreen() {
     val quality by Settings.quality.collectAsState()
     val smartAutoplay by Settings.smartAutoplay.collectAsState()
     val autoThemeWithSong by Settings.autoThemeWithSong.collectAsState()
+    val ambientMode by Settings.ambientMode.collectAsState()
     val smartCache by Settings.smartCache.collectAsState()
     val autoUpdateCheck by Settings.autoUpdateCheck.collectAsState()
     val updateState by AppUpdater.state.collectAsState()
@@ -148,7 +149,7 @@ fun SettingsScreen() {
                 Column(Modifier.weight(1f)) {
                     Text("Animated live particles")
                     Text(
-                        "Same DeepEcho colours with richer moving particles, depth glow and theme-specific ambient motion. Lyrics visualizer removed so more lyric lines stay visible.",
+                        "PC DeepEcho-inspired full-screen particle fields with theme-specific motion, soft depth and a readability veil so text, buttons and lyrics stay clear.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -183,6 +184,21 @@ fun SettingsScreen() {
             }
         }
 
+
+        item { Section("Ambient Mode") }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Theme-aware player ambience")
+                    Text(
+                        "Theme-specific Now Playing ambience: Golden dust, Ocean currents, Violet orbit glow, Rose drift, Emerald fireflies and AMOLED stars. Quick toggle is also beside Repeat in the player.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = ambientMode, onCheckedChange = Settings::setAmbientMode)
+            }
+        }
 
         item { Section("Auto Theme With Song") }
         item {
@@ -365,8 +381,8 @@ fun SettingsScreen() {
         item { Section("About") }
         item {
             Text(
-                "DEEP-ECHO Mobile 1.9.0 • Proper editable Queue, deeper About Artist pages, smarter taste/time Home recommendations, developer profile/contact, polished artwork, smart autoplay, themes, lyrics and offline playback. " +
-                    "Stable playback, lyrics lookup and download core remain protected.",
+                "DEEP-ECHO Mobile 1.10.1 TEST • brighter PC-style particles, responsive animated lyrics, dedicated Floating Lyrics switch, audio-reactive lyric graph/bounce/shine, theme-specific Like/Download bursts and visible Listening Stats shortcut. " +
+                    "PlaybackService and download pipeline remain protected while search, lyrics matching and UI layers are upgraded.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

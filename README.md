@@ -1,36 +1,23 @@
-# DEEP-ECHO Mobile 1.9.0 — Final Release Source
+# DEEP-ECHO Mobile v1.10.2 RELEASE SOURCE
 
-This folder is the release-converted form of the user-tested v1.9.0 Android app.
+This is the release-ready Android source for DEEP-ECHO Mobile v1.10.2.
+
+## v1.10.2 highlights
+- In-app Lyrics screen is lyrics-first again; the reactive graph is removed from the app lyrics page.
+- Floating Lyrics keeps the audio-reactive visual, redesigned as a transparent PC-style waveform with no opaque graph card.
+- Floating lyric text keeps theme-aware bounce + shine and follows music energy.
+- Floating Lyrics has a dedicated ON/OFF control.
+- Live/Ambient theme particles are brighter while preserving text/button readability.
+- Theme-specific Like/Download celebration animations are retained.
+- Cross-device lyrics rendering fixes, stronger lyrics matching/syncing, Word-by-Word, Romanized mode, Listening Stats, smarter Search, and Home scrolling optimizations from v1.10.x are retained.
 
 ## Release
-Double-click:
+Use the parent kit's `RELEASE-DEEPECHO-ANDROID-v1.10.2-TRUE-ONE-CLICK.bat`.
 
-`RELEASE-ANDROID-1.9.0.bat`
+The release process must reuse the permanent v1.9.0 Android signing key at:
+`%USERPROFILE%\DeepEcho-Android-Local\deepecho.keystore`
 
-Wait until the terminal shows:
-
-`[9/9] DONE - RELEASE VERIFIED`
-
-The BAT:
-1. verifies the exact tested source;
-2. confirms `v1.9.0` is unused;
-3. requires the permanent Android signing key;
-4. runs Gradle tests + signed release build;
-5. verifies/prepares the APK + SHA256;
-6. clones only `windowsdaiyu-cyber/DeepEcho-Android`;
-7. commits/pushes `main` without force;
-8. creates/pushes annotated tag `v1.9.0`;
-9. waits for GitHub Actions to publish and verify the Release.
-
-The Windows/PC DEEP-ECHO repository is not used.
-
-## Future versions
-For 1.9.1 and later:
-- develop/test first;
-- keep package `com.deepecho.mobile`;
-- increment versionCode and versionName;
-- reuse the same permanent signing key;
-- convert the exact tested build into a new release;
-- push a new unique `vX.Y.Z` tag.
-
-Installed v1.9.0+ builds check the public Android GitHub Releases endpoint for newer versions.
+Package: `com.deepecho.mobile`
+Version: `1.10.2`
+Tag: `v1.10.2`
+Repository: `windowsdaiyu-cyber/DeepEcho-Android`

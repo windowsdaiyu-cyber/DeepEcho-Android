@@ -109,10 +109,14 @@ fun lyricsActiveFor(name: String, live: Boolean): Color {
 
 fun lyricsMainFor(name: String, live: Boolean): Color {
     val p = paletteFor(name)
-    return lerp(p.textMain, Color.White, if (live) 0.32f else 0.14f)
+    if (name == "AMOLED") return Color.White
+    // Keep lyrics visibly theme-coloured across OEM font/rendering differences instead of
+    // washing every palette toward plain white on some devices.
+    return lerp(p.textMain, p.primary, if (live) 0.26f else 0.16f)
 }
 
 fun lyricsMutedFor(name: String, live: Boolean): Color {
     val p = paletteFor(name)
-    return lerp(p.textMuted, Color.White, if (live) 0.24f else 0.12f)
+    if (name == "AMOLED") return p.textMuted
+    return lerp(p.textMuted, p.primary, if (live) 0.13f else 0.08f)
 }

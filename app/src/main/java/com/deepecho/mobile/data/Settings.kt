@@ -15,6 +15,7 @@ object Settings {
     val wordByWordLyrics = MutableStateFlow(false)
     val romanizedLyrics = MutableStateFlow(false)
     val autoThemeWithSong = MutableStateFlow(false)
+    val ambientMode = MutableStateFlow(true)
     val smartCache = MutableStateFlow(false)
     val autoUpdateCheck = MutableStateFlow(true)
 
@@ -27,6 +28,7 @@ object Settings {
         wordByWordLyrics.value = sp.getBoolean("word_by_word_lyrics", false)
         romanizedLyrics.value = sp.getBoolean("romanized_lyrics", false)
         autoThemeWithSong.value = sp.getBoolean("auto_theme_with_song", false)
+        ambientMode.value = sp.getBoolean("ambient_mode", true)
         smartCache.value = sp.getBoolean("smart_cache", false)
         autoUpdateCheck.value = sp.getBoolean("auto_update_check", true)
     }
@@ -69,6 +71,11 @@ object Settings {
     fun setAutoThemeWithSong(enabled: Boolean) {
         autoThemeWithSong.value = enabled
         sp.edit().putBoolean("auto_theme_with_song", enabled).apply()
+    }
+
+    fun setAmbientMode(enabled: Boolean) {
+        ambientMode.value = enabled
+        sp.edit().putBoolean("ambient_mode", enabled).apply()
     }
 
     fun setSmartCache(enabled: Boolean) {
