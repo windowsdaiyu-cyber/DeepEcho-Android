@@ -1,0 +1,100 @@
+name: Recover DEEP-ECHO Mobile v1.9.0 Release
+
+on:
+  push:
+    branches:
+      - "recovery-v1.9.0-*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deepecho-mobile-v1.9.0-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout existing v1.9.0 tag
+        uses: actions/checkout@v4
+        with:
+          ref: "v1.9.0"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK 35
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+          log-accepted-android-sdk-licenses: "false"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Verify frozen v1.9.0 source and assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'applicationId = "com.deepecho.mobile"' app/build.gradle.kts
+          grep -Fq 'versionName = "1.9.0"' app/build.gradle.kts
+          test -f "release-input/DEEP-ECHO-Mobile-1.9.0.apk"
+          test -f "release-input/DEEP-ECHO-Mobile-1.9.0.apk.sha256"
+          test -f "RELEASE-NOTES-1.9.0.md"
+
+      - name: Cloud regression build
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+
+      - name: Verify signed v1.9.0 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release-input/DEEP-ECHO-Mobile-1.9.0.apk"
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+
+          (cd release-input && sha256sum -c "DEEP-ECHO-Mobile-1.9.0.apk.sha256")
+          "$BT/apksigner" verify --verbose "$APK"
+
+          BADGING="$("$BT/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -F "package: name='com.deepecho.mobile'"
+          echo "$BADGING" | grep -F "versionName='1.9.0'"
+
+      - name: Publish v1.9.0 GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "v1.9.0" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v1.9.0 Release already exists. Verifying instead of overwriting."
+          else
+            gh release create "v1.9.0" \
+              "release-input/DEEP-ECHO-Mobile-1.9.0.apk" \
+              "release-input/DEEP-ECHO-Mobile-1.9.0.apk.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "DEEP-ECHO Mobile 1.9.0" \
+              --notes-file "RELEASE-NOTES-1.9.0.md"
+          fi
+
+      - name: Verify updater assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ASSETS="$(gh release view "v1.9.0" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          echo "$ASSETS" | grep -Fx "DEEP-ECHO-Mobile-1.9.0.apk"
+          echo "$ASSETS" | grep -Fx "DEEP-ECHO-Mobile-1.9.0.apk.sha256"

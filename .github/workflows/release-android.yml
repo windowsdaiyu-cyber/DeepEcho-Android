@@ -27,15 +27,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 35
-        shell: bash
-        run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Android SDK 35
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+          log-accepted-android-sdk-licenses: "false"
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -49,9 +45,9 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
 
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           grep -Fq 'applicationId = "com.deepecho.mobile"' app/build.gradle.kts
           grep -Fq "versionName = \"${VERSION}\"" app/build.gradle.kts
-
           test -f "release-input/DEEP-ECHO-Mobile-${VERSION}.apk"
           test -f "release-input/DEEP-ECHO-Mobile-${VERSION}.apk.sha256"
           test -f "RELEASE-NOTES-${VERSION}.md"
@@ -68,7 +64,6 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           APK="release-input/DEEP-ECHO-Mobile-${VERSION}.apk"
-          SHA="${APK}.sha256"
           BT="$ANDROID_HOME/build-tools/35.0.0"
 
           (cd release-input && sha256sum -c "DEEP-ECHO-Mobile-${VERSION}.apk.sha256")
@@ -110,7 +105,6 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-
           ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
           echo "$ASSETS" | grep -Fx "DEEP-ECHO-Mobile-${VERSION}.apk"
           echo "$ASSETS" | grep -Fx "DEEP-ECHO-Mobile-${VERSION}.apk.sha256"
