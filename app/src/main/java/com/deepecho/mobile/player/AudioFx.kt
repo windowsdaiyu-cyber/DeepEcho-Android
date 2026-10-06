@@ -2,6 +2,8 @@ package com.deepecho.mobile.player
 
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
+import android.media.audiofx.Virtualizer
 import androidx.media3.common.C
 import com.deepecho.mobile.data.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,8 @@ object AudioFx {
 
     private var eq: Equalizer? = null
     private var bassFx: BassBoost? = null
+    private var loudnessFx: LoudnessEnhancer? = null
+    private var spatialFx: Virtualizer? = null
     private var session = -1
 
     fun attach(sessionId: Int) {
@@ -65,6 +69,7 @@ object AudioFx {
         } catch (_: Throwable) {
             bassFx = null
         }
+        applyPlayerSettings()
     }
 
     fun setBand(index: Int, mb: Int) {
@@ -102,6 +107,43 @@ object AudioFx {
         Settings.putInt("bass", s)
     }
 
+
+    /** Apply optional post-processing immediately to the active audio session. */
+    fun applyPlayerSettings() {
+        try { loudnessFx?.release() } catch (_: Throwable) {}
+        try { spatialFx?.release() } catch (_: Throwable) {}
+        loudnessFx = null
+        spatialFx = null
+        if (session <= 0) return
+
+        if (Settings.audioNormalization.value) {
+            try {
+                val gainMb = when (Settings.loudnessPreset.value) {
+                    "Quiet" -> -250
+                    "Loud" -> 350
+                    else -> 0
+                }
+                loudnessFx = LoudnessEnhancer(session).apply {
+                    setTargetGain(gainMb)
+                    enabled = true
+                }
+            } catch (_: Throwable) {
+                loudnessFx = null
+            }
+        }
+
+        if (Settings.spatialAudio.value) {
+            try {
+                spatialFx = Virtualizer(0, session).apply {
+                    enabled = true
+                    if (strengthSupported) setStrength(650.toShort())
+                }
+            } catch (_: Throwable) {
+                spatialFx = null
+            }
+        }
+    }
+
     private fun persist() {
         Settings.putString("eq_levels", levels.value.joinToString(","))
         Settings.putString("eq_preset", preset.value)
@@ -110,7 +152,11 @@ object AudioFx {
     private fun releaseEffects() {
         try { eq?.release() } catch (_: Throwable) {}
         try { bassFx?.release() } catch (_: Throwable) {}
+        try { loudnessFx?.release() } catch (_: Throwable) {}
+        try { spatialFx?.release() } catch (_: Throwable) {}
         eq = null
         bassFx = null
+        loudnessFx = null
+        spatialFx = null
     }
 }

@@ -17,10 +17,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,26 +50,41 @@ import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.ThemeAdvisor
 import com.deepecho.mobile.net.AppUpdater
 import com.deepecho.mobile.net.Downloads
-import com.deepecho.mobile.player.AudioFx
 import com.deepecho.mobile.player.PlayerClient
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onBack: (() -> Unit)? = null) {
     val theme by Settings.theme.collectAsState()
-    val liveTheme by Settings.liveTheme.collectAsState()
-    val quality by Settings.quality.collectAsState()
     val smartAutoplay by Settings.smartAutoplay.collectAsState()
     val autoThemeWithSong by Settings.autoThemeWithSong.collectAsState()
     val ambientMode by Settings.ambientMode.collectAsState()
     val smartCache by Settings.smartCache.collectAsState()
     val autoUpdateCheck by Settings.autoUpdateCheck.collectAsState()
     val updateState by AppUpdater.state.collectAsState()
-    val fx by AudioFx.info.collectAsState()
-    val levels by AudioFx.levels.collectAsState()
-    val bass by AudioFx.bass.collectAsState()
-    val preset by AudioFx.preset.collectAsState()
     val context = LocalContext.current
     var showDeveloper by remember { mutableStateOf(false) }
+    var showPlayerAudio by remember { mutableStateOf(false) }
+    var showLocalMusic by remember { mutableStateOf(false) }
+    var showPodcasts by remember { mutableStateOf(false) }
+    var showBlocked by remember { mutableStateOf(false) }
+    var settingsQuery by remember { mutableStateOf("") }
+
+    if (showPlayerAudio) {
+        PlayerAudioSettingsScreen(onBack = { showPlayerAudio = false })
+        return
+    }
+    if (showLocalMusic) {
+        LocalMusicScreen(onBack = { showLocalMusic = false })
+        return
+    }
+    if (showPodcasts) {
+        PodcastsScreen(onBack = { showPodcasts = false })
+        return
+    }
+    if (showBlocked) {
+        BlockedArtistsScreen(onBack = { showBlocked = false })
+        return
+    }
 
     if (showDeveloper) {
         AlertDialog(
@@ -115,48 +140,52 @@ fun SettingsScreen() {
     }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
-
-        item { Section("Classic Theme") }
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(Palettes.size) { i ->
-                    val palette = Palettes[i]
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable {
-                            Settings.setLiveTheme(false)
-                            Settings.setTheme(palette.name)
-                        }
-                    ) {
-                        Box(
-                            Modifier.size(48.dp).clip(CircleShape).background(palette.primary)
-                                .border(
-                                    if (!liveTheme && theme == palette.name) 3.dp else 0.dp,
-                                    MaterialTheme.colorScheme.onBackground,
-                                    CircleShape
-                                )
-                        )
-                        Text(palette.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                    }
-                }
-            }
-        }
-
-        item { Section("Live Theme") }
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Animated live particles")
-                    Text(
-                        "PC DeepEcho-inspired full-screen particle fields with theme-specific motion, soft depth and a readability veil so text, buttons and lyrics stay clear.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                if (onBack != null) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    }
                 }
-                Switch(checked = liveTheme, onCheckedChange = { enabled ->
-                    Settings.setLiveTheme(enabled)
-                })
+                Text(
+                    "Settings",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        item {
+            OutlinedTextField(
+                value = settingsQuery,
+                onValueChange = { settingsQuery = it },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                placeholder = { Text("Search settings") },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (settingsQuery.isNotBlank()) {
+            item {
+                SettingsSearchResults(
+                    query = settingsQuery,
+                    onPlayerAudio = { settingsQuery = ""; showPlayerAudio = true },
+                    onLocalMusic = { settingsQuery = ""; showLocalMusic = true },
+                    onPodcasts = { settingsQuery = ""; showPodcasts = true },
+                    onBlocked = { settingsQuery = ""; showBlocked = true }
+                )
+            }
+        }
+
+        item { Section("Live Themes") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Animated live particles", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "DeepEcho uses Live Themes only. Golden is the first-launch default; Ruby adds a cinematic red particle/glass UI. Your selected live theme is remembered for future sessions.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         item {
@@ -165,20 +194,18 @@ fun SettingsScreen() {
                     val palette = Palettes[i]
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable {
-                            Settings.selectLiveTheme(palette.name)
-                        }
+                        modifier = Modifier.clickable { Settings.selectLiveTheme(palette.name) }
                     ) {
                         Box(
                             Modifier.size(52.dp).clip(CircleShape).background(palette.primary.copy(alpha = 0.88f))
                                 .border(
-                                    if (liveTheme && theme == palette.name) 3.dp else 1.dp,
-                                    if (liveTheme && theme == palette.name) MaterialTheme.colorScheme.onBackground
+                                    if (theme == palette.name) 3.dp else 1.dp,
+                                    if (theme == palette.name) MaterialTheme.colorScheme.onBackground
                                     else palette.primary.copy(alpha = 0.55f),
                                     CircleShape
                                 )
                         )
-                        Text("Live ${palette.name}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                        Text(palette.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
             }
@@ -191,7 +218,7 @@ fun SettingsScreen() {
                 Column(Modifier.weight(1f)) {
                     Text("Theme-aware player ambience")
                     Text(
-                        "Theme-specific Now Playing ambience: Golden dust, Ocean currents, Violet orbit glow, Rose drift, Emerald fireflies and AMOLED stars. Quick toggle is also beside Repeat in the player.",
+                        "Theme-specific ambience: Golden dust, Ruby energy ribbons/embers, Ocean currents, Violet orbit glow, Rose drift, Emerald fireflies and AMOLED stars. Quick toggle is also beside Repeat in the player.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -206,7 +233,7 @@ fun SettingsScreen() {
                 Column(Modifier.weight(1f)) {
                     Text("Change colour theme with each song")
                     Text(
-                        "DeepEcho suggests a theme from the song title/artist. When ON, only the colour family changes automatically; Classic/Live mode stays as you selected it.",
+                        "DeepEcho suggests a Live Theme colour family from the current song title/artist. When ON, the selected Live Theme changes automatically and is remembered.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -255,6 +282,38 @@ fun SettingsScreen() {
             }
         }
 
+        item { Section("Player") }
+        item {
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f))
+                    .clickable { showPlayerAudio = true }
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Icon(Icons.Filled.PlayArrow, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f)) {
+                    Text("Player and audio", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Playback quality, downloads, audio processing, preload, queue and device behavior",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        item { Section("Library & Content") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SettingsNavCard(Icons.Filled.LibraryMusic, "Local Music", "Device songs, albums, artists and folders") { showLocalMusic = true }
+                SettingsNavCard(Icons.Filled.Podcasts, "Podcasts", "Search, follow, resume and play podcast episodes") { showPodcasts = true }
+                SettingsNavCard(Icons.Filled.Block, "Blocked Artists", "Manage artists excluded from recommendations") { showBlocked = true }
+            }
+        }
+
         item { Section("Sleep Timer") }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -264,48 +323,6 @@ fun SettingsScreen() {
                 item { FilterChip(selected = false, onClick = { PlayerClient.sleepAtEndOfSong() }, label = { Text("End song") }) }
                 item { FilterChip(selected = PlayerClient.sleepUntilMs == 0L, onClick = { PlayerClient.cancelSleepTimer() }, label = { Text("Off") }) }
             }
-        }
-
-        item { Section("Audio quality (stream + download)") }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Low", "Medium", "High").forEachIndexed { i, label ->
-                    FilterChip(selected = quality == i, onClick = { Settings.setQuality(i) }, label = { Text(label) })
-                }
-            }
-        }
-
-        item { Section("Equalizer") }
-        if (fx == null) {
-            item { Text("Koi gaana play karo — tab equalizer active hoga.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        } else {
-            val info = fx!!
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val names = AudioFx.presets.keys.toList()
-                    items(names.size) { i ->
-                        FilterChip(selected = preset == names[i], onClick = { AudioFx.applyPreset(names[i]) }, label = { Text(names[i]) })
-                    }
-                }
-            }
-            items(info.freqsHz.size) { band ->
-                val hz = info.freqsHz[band]
-                val label = if (hz >= 1000) "${"%.1f".format(hz / 1000f)} kHz" else "$hz Hz"
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        label,
-                        Modifier.padding(end = 8.dp).size(width = 64.dp, height = 24.dp),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Slider(
-                        value = (levels.getOrNull(band) ?: 0).toFloat(),
-                        onValueChange = { AudioFx.setBand(band, it.toInt()) },
-                        valueRange = info.minMb.toFloat()..info.maxMb.toFloat()
-                    )
-                }
-            }
-            item { Text("Bass boost", style = MaterialTheme.typography.bodyMedium) }
-            item { Slider(value = bass.toFloat(), onValueChange = { AudioFx.setBass(it.toInt()) }, valueRange = 0f..1000f) }
         }
 
         item { Section("Downloads") }
@@ -381,8 +398,9 @@ fun SettingsScreen() {
         item { Section("About") }
         item {
             Text(
-                "DEEP-ECHO Mobile 1.10.1 TEST • brighter PC-style particles, responsive animated lyrics, dedicated Floating Lyrics switch, audio-reactive lyric graph/bounce/shine, theme-specific Like/Download bursts and visible Listening Stats shortcut. " +
-                    "PlaybackService and download pipeline remain protected while search, lyrics matching and UI layers are upgraded.",
+                "DEEP-ECHO Mobile 1.12.2 TEST • Universal Lyrics V2 adds wrong-lyrics rejection, actual-upload caption verification, " +
+                    "piecewise re-alignment, vocal-onset guarding, Exact Lyrics / Repair Sync, verified caching and safer source labels. " +
+                    "Playback, Ruby/Live themes, Ambient Mode, Floating Lyrics, downloads, Search/Home and session restore remain protected.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -398,4 +416,51 @@ private fun Section(title: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 16.dp)
     )
+}
+
+
+@Composable
+private fun SettingsNavCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+            .clickable(onClick = onClick).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SettingsSearchResults(
+    query: String,
+    onPlayerAudio: () -> Unit,
+    onLocalMusic: () -> Unit,
+    onPodcasts: () -> Unit,
+    onBlocked: () -> Unit
+) {
+    val q = query.trim().lowercase()
+    data class Result(val title: String, val keys: String, val action: () -> Unit)
+    val all = listOf(
+        Result("Player and audio", "playback quality equalizer data saver crossfade bluetooth mute preload queue audio", onPlayerAudio),
+        Result("Local Music", "local music folders scan library device mp3 flac", onLocalMusic),
+        Result("Podcasts", "podcast episodes continue listening follow", onPodcasts),
+        Result("Blocked Artists", "block artist recommendations discovery autoplay", onBlocked),
+        Result("Lyrics / Floating Lyrics", "lyrics floating romanized word by word", { UiEvents.openPlayer() }),
+        Result("Ambient Mode", "ambient video fullscreen theme", { Settings.setAmbientMode(true); UiEvents.openPlayer() })
+    ).filter { it.title.lowercase().contains(q) || it.keys.contains(q) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Search results", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        if (all.isEmpty()) Text("No matching setting", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        all.forEach { r ->
+            Row(Modifier.fillMaxWidth().clickable { r.action() }.padding(vertical = 10.dp)) {
+                Text(r.title, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
 }

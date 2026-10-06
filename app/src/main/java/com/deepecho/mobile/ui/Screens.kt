@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,8 +13,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -31,9 +34,11 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -67,12 +72,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.deepecho.mobile.data.HomeMix
+import com.deepecho.mobile.data.LocalMusic
 import com.deepecho.mobile.data.QuoteDeck
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Song
 import com.deepecho.mobile.data.Store
 import com.deepecho.mobile.data.TasteEngine
 import com.deepecho.mobile.data.TopArtist
+import com.deepecho.mobile.lyrics.LyricsSearchAvailabilityIndex
+import com.deepecho.mobile.lyrics.LyricsSearchResult
 import com.deepecho.mobile.net.Downloads
 import com.deepecho.mobile.net.RemotePlaylist
 import com.deepecho.mobile.net.YouTubeApi
@@ -83,6 +91,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,7 +102,7 @@ private val homePlaylistShelfCache = ConcurrentHashMap<String, List<RemotePlayli
 // ───────────────────────── HOME ─────────────────────────
 
 @Composable
-fun HomeScreen(onOpenSearch: () -> Unit) {
+fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
     val history by Store.history.collectAsState()
     val liked by Store.liked.collectAsState()
     val smartAutoplay by Settings.smartAutoplay.collectAsState()
@@ -150,7 +159,18 @@ fun HomeScreen(onOpenSearch: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(bottom = 18.dp)) {
         item {
             Column(Modifier.padding(16.dp, 20.dp, 16.dp, 8.dp)) {
-                Text(greeting, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        greeting,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, "Settings", tint = MaterialTheme.colorScheme.onBackground)
+                    }
+                }
                 Text(
                     QuoteDeck.current(),
                     color = MaterialTheme.colorScheme.primary,
@@ -175,6 +195,12 @@ fun HomeScreen(onOpenSearch: () -> Unit) {
                         Switch(checked = smartAutoplay, onCheckedChange = { Settings.setSmartAutoplay(it) })
                     }
                 }
+            }
+        }
+
+        if (history.isNotEmpty()) {
+            item(key = "recent-hero") {
+                RecentTopTenHero(history)
             }
         }
 
@@ -211,7 +237,6 @@ fun HomeScreen(onOpenSearch: () -> Unit) {
             TasteShelf(HomeMix("Latest Releases", TasteEngine.latestReleaseQuery()))
         }
 
-        if (history.isNotEmpty()) item { Shelf("Recently played", history.take(15), prewarmCount = 0) }
         if (liked.isNotEmpty()) item { Shelf("Your likes", liked.take(15), prewarmCount = 0) }
         mixes.forEach { mix ->
             item(key = mix.query) { TasteShelf(mix) }
@@ -223,12 +248,200 @@ fun HomeScreen(onOpenSearch: () -> Unit) {
             )
         }
 
-        // Top Artists remains the final Home section.
+        item(key = "speed-dial") {
+            SpeedDialShelf(history = history, liked = liked)
+        }
+
         item {
             TopArtistsShelf(
                 artists = artists,
                 onArtist = { artist -> openArtist = artist }
             )
+        }
+
+        item(key = "live-performances") {
+            val liveQuery = remember(artists, history, liked) {
+                val artist = artists.firstOrNull()?.name
+                    ?: history.firstOrNull()?.artist
+                    ?: liked.firstOrNull()?.artist
+                if (artist.isNullOrBlank()) "live music performance" else "$artist live performance"
+            }
+            LivePerformancesShelf(liveQuery)
+        }
+    }
+}
+
+@Composable
+private fun RecentTopTenHero(songs: List<Song>) {
+    val recent = remember(songs) { songs.distinctBy { it.url }.take(10) }
+    if (recent.isEmpty()) return
+
+    Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+        Text(
+            "Recently played",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            itemsIndexed(recent, key = { _, song -> "recent-big-${song.url}" }) { _, song ->
+                Box(
+                    Modifier
+                        .width(220.dp)
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .clickable { PlayerClient.playDiscovery(song) }
+                ) {
+                    // Cover-only hero, as requested. The entire artwork is the play target.
+                    Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(24.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedDialShelf(history: List<Song>, liked: List<Song>) {
+    val dial = remember(history, liked) {
+        (history + liked).distinctBy { it.url }.take(12)
+    }
+    if (dial.isEmpty()) return
+
+    val columns = remember(dial) { dial.chunked(3) }
+    Column(Modifier.padding(top = 22.dp)) {
+        Text(
+            "Speed dial",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            itemsIndexed(columns, key = { index, _ -> "speed-column-$index" }) { _, group ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    group.forEach { song ->
+                        Row(
+                            Modifier
+                                .width(252.dp)
+                                .height(72.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
+                                .clickable { PlayerClient.playDiscovery(song) }
+                                .padding(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Art(song.thumb, Modifier.size(60.dp), RoundedCornerShape(10.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    song.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    song.artist,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(23.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LivePerformancesShelf(query: String) {
+    val cacheKey = "live::$query"
+    val cached = homeSongShelfCache[cacheKey].orEmpty()
+    val songs by produceState<List<Song>>(cached, query) {
+        if (value.isEmpty()) {
+            val loaded = withContext(Dispatchers.IO) {
+                runCatching { YouTubeApi.searchVideos(query).take(10) }.getOrDefault(emptyList())
+            }
+            if (loaded.isNotEmpty()) homeSongShelfCache[cacheKey] = loaded
+            value = loaded
+        }
+    }
+    if (songs.isEmpty()) return
+
+    Column(Modifier.padding(top = 24.dp, bottom = 18.dp)) {
+        Text(
+            "Live performances",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            itemsIndexed(songs, key = { _, song -> "live-${song.url}" }) { _, song ->
+                Column(
+                    Modifier
+                        .width(260.dp)
+                        .clickable { PlayerClient.playDiscovery(song) }
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(18.dp))
+                    ) {
+                        Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(18.dp))
+                        Box(
+                            Modifier
+                                .align(Alignment.Center)
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        song.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        song.artist,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -250,12 +463,14 @@ private fun TasteShelf(mix: HomeMix) {
 
 @Composable
 private fun Shelf(title: String, songs: List<Song>, prewarmCount: Int = 1) {
+    val blockedArtists by Settings.blockedArtists.collectAsState()
+    val visibleSongs = remember(songs, blockedArtists) { songs.filterNot { song -> blockedArtists.any { it.equals(song.artist, true) } } }
     val liked by Store.liked.collectAsState()
     val downloads by Store.downloads.collectAsState()
     val downloadProgress by Downloads.progress.collectAsState()
 
-    LaunchedEffect(songs.firstOrNull()?.url, prewarmCount) {
-        if (prewarmCount > 0 && songs.isNotEmpty()) PlayerClient.prewarm(songs, prewarmCount)
+    LaunchedEffect(visibleSongs.firstOrNull()?.url, prewarmCount) {
+        if (prewarmCount > 0 && visibleSongs.isNotEmpty()) PlayerClient.prewarm(visibleSongs, prewarmCount)
     }
 
     Column(Modifier.padding(top = 16.dp)) {
@@ -267,14 +482,15 @@ private fun Shelf(title: String, songs: List<Song>, prewarmCount: Int = 1) {
             modifier = Modifier.padding(horizontal = 16.dp)
         )
         Spacer(Modifier.size(8.dp))
-        if (songs.isEmpty()) {
+        if (visibleSongs.isEmpty()) {
             Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         } else {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                itemsIndexed(songs, key = { i, song -> "${song.url}#$i" }) { _, song ->
+                itemsIndexed(visibleSongs, key = { i, song -> "${song.url}#$i" }) { _, song ->
+                    var showActions by remember(song.url) { mutableStateOf(false) }
                     val isLiked = liked.any { it.url == song.url }
                     val downloaded = downloads.any { it.song.url == song.url }
                     val progress = downloadProgress[song.url]
@@ -333,7 +549,11 @@ private fun Shelf(title: String, songs: List<Song>, prewarmCount: Int = 1) {
                                     tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            IconButton(onClick = { showActions = true }, modifier = Modifier.size(34.dp)) {
+                                Icon(Icons.Filled.MoreVert, "More", modifier = Modifier.size(19.dp))
+                            }
                         }
+                        if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
                     }
                 }
             }
@@ -360,6 +580,8 @@ private fun HomePlaylistShelf(query: String, onOpen: (RemotePlaylist) -> Unit) {
 
 @Composable
 private fun TopArtistsShelf(artists: List<TopArtist>, onArtist: (TopArtist) -> Unit) {
+    val blocked by Settings.blockedArtists.collectAsState()
+    val visibleArtists = remember(artists, blocked) { artists.filterNot { a -> blocked.any { it.equals(a.name, true) } } }
     Column(Modifier.padding(top = 20.dp, bottom = 12.dp)) {
         Text(
             "Top Artists",
@@ -369,7 +591,7 @@ private fun TopArtistsShelf(artists: List<TopArtist>, onArtist: (TopArtist) -> U
             modifier = Modifier.padding(horizontal = 16.dp)
         )
         Spacer(Modifier.size(10.dp))
-        if (artists.isEmpty()) {
+        if (visibleArtists.isEmpty()) {
             Text(
                 "Thoda aur suno — tumhare Top Artists yahan banenge.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -380,7 +602,7 @@ private fun TopArtistsShelf(artists: List<TopArtist>, onArtist: (TopArtist) -> U
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                itemsIndexed(artists, key = { _, a -> a.name }) { _, artist ->
+                itemsIndexed(visibleArtists, key = { _, a -> a.name }) { _, artist ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.width(118.dp).clickable { onArtist(artist) }
@@ -406,6 +628,9 @@ private fun TopArtistsShelf(artists: List<TopArtist>, onArtist: (TopArtist) -> U
 object SearchVm {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var generation = 0
+    private var suggestionGeneration = 0
+    private var suggestionJob: Job? = null
+    private var lyricsProbeJob: Job? = null
 
     var query by mutableStateOf("")
     var results by mutableStateOf<List<Song>>(emptyList())
@@ -413,13 +638,26 @@ object SearchVm {
     var albums by mutableStateOf<List<RemotePlaylist>>(emptyList())
     var playlists by mutableStateOf<List<RemotePlaylist>>(emptyList())
     var artists by mutableStateOf<List<TopArtist>>(emptyList())
+    var lyricsResults by mutableStateOf<List<LyricsSearchResult>>(emptyList())
+    var lyricsLoading by mutableStateOf(false)
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var hasSearched by mutableStateOf(false)
     var submittedQuery by mutableStateOf("")
+    var suggestions by mutableStateOf<List<String>>(emptyList())
+    var suggestionLoading by mutableStateOf(false)
 
     fun edit(text: String) {
         query = text
+        val normalized = text.trim().replace(Regex("\\s+"), " ")
+        val suggestionRequest = ++suggestionGeneration
+        suggestionJob?.cancel()
+        if (!normalized.equals(submittedQuery, ignoreCase = true)) {
+            lyricsProbeJob?.cancel()
+            lyricsProbeJob = null
+            lyricsResults = emptyList()
+            lyricsLoading = false
+        }
         if (text.isBlank()) {
             generation += 1
             results = emptyList()
@@ -427,10 +665,45 @@ object SearchVm {
             albums = emptyList()
             playlists = emptyList()
             artists = emptyList()
+            lyricsResults = emptyList()
+            lyricsLoading = false
             loading = false
             error = null
             hasSearched = false
             submittedQuery = ""
+            suggestions = emptyList()
+            suggestionLoading = false
+            return
+        }
+
+        if (normalized.length < 2) {
+            suggestions = emptyList()
+            suggestionLoading = false
+            return
+        }
+
+        val immediateLocal = TasteEngine.searchSuggestions(normalized, emptyList(), 6)
+        suggestions = immediateLocal
+        suggestionLoading = true
+        suggestionJob = scope.launch {
+            // Debounce just enough to avoid firing a request for every keystroke.
+            delay(170)
+            val remote = withContext(Dispatchers.IO) {
+                runCatching { YouTubeApi.searchSuggestions(normalized, 10) }.getOrDefault(emptyList())
+            }
+            val local = TasteEngine.searchSuggestions(normalized, emptyList(), 8)
+            if (suggestionRequest != suggestionGeneration) return@launch
+            if (!query.trim().replace(Regex("\\s+"), " ").equals(normalized, ignoreCase = true)) return@launch
+
+            // YouTube autocomplete carries the strongest intent signal; local history/taste
+            // fills gaps without adding fake "official song/album/artist" templates.
+            suggestions = (remote + local)
+                .map { it.trim().replace(Regex("\\s+"), " ") }
+                .filter { it.isNotBlank() && !it.equals(normalized, true) }
+                .filterNot { suggestion -> Settings.blockedArtists.value.any { blocked -> suggestion.contains(blocked, true) } }
+                .distinctBy { it.lowercase() }
+                .take(10)
+            suggestionLoading = false
         }
     }
 
@@ -438,6 +711,15 @@ object SearchVm {
         val text = q.trim().replace(Regex("\\s+"), " ")
         if (text.isEmpty()) return
         val request = ++generation
+        ++suggestionGeneration
+        suggestionJob?.cancel()
+        suggestionJob = null
+        lyricsProbeJob?.cancel()
+        lyricsProbeJob = null
+        suggestions = emptyList()
+        suggestionLoading = false
+        lyricsResults = emptyList()
+        lyricsLoading = false
         query = text
         submittedQuery = text
         loading = true
@@ -466,13 +748,19 @@ object SearchVm {
             val artistsResult = artistsJob.await()
             if (request != generation) return@launch
 
-            results = songsResult.getOrDefault(emptyList())
+            val localMatches = LocalMusic.tracks.value.asSequence()
+                .map { it.song }
+                .filter { it.title.contains(text, true) || it.artist.contains(text, true) }
+                .take(20)
+                .toList()
+            results = (localMatches + songsResult.getOrDefault(emptyList())).distinctBy { it.url }
             videos = videosResult.getOrDefault(emptyList())
             albums = albumsResult.getOrDefault(emptyList())
             playlists = playlistsResult.getOrDefault(emptyList())
             artists = artistsResult.getOrDefault(emptyList())
             loading = false
 
+            startLyricsAvailability(request, text)
             if (results.isNotEmpty()) PlayerClient.prewarm(results, 1)
             if (results.isEmpty() && videos.isEmpty() && albums.isEmpty() && playlists.isEmpty() && artists.isEmpty()) {
                 val failure = songsResult.exceptionOrNull()
@@ -485,6 +773,51 @@ object SearchVm {
                 } else {
                     "Kuch nahi mila"
                 }
+            }
+        }
+    }
+
+    private fun startLyricsAvailability(request: Int, queryText: String) {
+        val candidates = (results.take(8) + videos.take(8))
+            .distinctBy { it.url }
+            .take(12)
+        if (candidates.isEmpty()) {
+            lyricsResults = emptyList()
+            lyricsLoading = false
+            return
+        }
+
+        val immediate = candidates.mapNotNull { LyricsSearchAvailabilityIndex.cached(it) }
+        lyricsResults = LyricsSearchAvailabilityIndex.rankForQuery(immediate, queryText)
+        val alreadyKnown = immediate.mapTo(hashSetOf()) { it.song.url }
+        val pending = candidates.filterNot { it.url in alreadyKnown }
+        if (pending.isEmpty()) {
+            lyricsLoading = false
+            return
+        }
+
+        lyricsLoading = true
+        lyricsProbeJob?.cancel()
+        lyricsProbeJob = scope.launch {
+            // Bounded batches prevent the Lyrics discovery layer from flooding providers while
+            // normal Search remains fully usable. Results publish progressively for top items.
+            for (batch in pending.chunked(2)) {
+                val found = batch.map { song ->
+                    async(Dispatchers.IO) {
+                        runCatching { LyricsSearchAvailabilityIndex.probe(song) }.getOrNull()
+                    }
+                }.mapNotNull { it.await() }
+
+                if (request != generation) return@launch
+                if (!submittedQuery.equals(queryText, ignoreCase = true)) return@launch
+                if (!query.trim().replace(Regex("\\s+"), " ").equals(queryText, ignoreCase = true)) return@launch
+                if (found.isNotEmpty()) {
+                    lyricsResults = LyricsSearchAvailabilityIndex.rankForQuery(lyricsResults + found, queryText)
+                }
+            }
+            if (request == generation && submittedQuery.equals(queryText, true) &&
+                query.trim().replace(Regex("\\s+"), " ").equals(queryText, true)) {
+                lyricsLoading = false
             }
         }
     }
@@ -518,10 +851,6 @@ fun SearchScreen() {
             runCatching { TasteEngine.searchRecommendations(12) }.getOrDefault(emptyList())
         }
     }
-    val suggestions = remember(SearchVm.query, SearchVm.results, history, liked, searchHistory) {
-        TasteEngine.searchSuggestions(SearchVm.query, SearchVm.results, 8)
-    }
-
     LaunchedEffect(recommendations.firstOrNull()?.url) {
         PlayerClient.prewarm(recommendations, 1)
     }
@@ -550,7 +879,7 @@ fun SearchScreen() {
         )
 
         if (SearchVm.hasSearched) {
-            val tabs = listOf("All", "Songs", "Videos", "Albums", "Artists")
+            val tabs = listOf("All", "Songs", "Lyrics", "Videos", "Albums", "Artists")
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -580,7 +909,7 @@ fun SearchScreen() {
         if (
             SearchVm.query.trim().length >= 2 &&
             !SearchVm.query.trim().equals(SearchVm.submittedQuery, ignoreCase = true) &&
-            suggestions.isNotEmpty() &&
+            SearchVm.suggestions.isNotEmpty() &&
             !SearchVm.loading
         ) {
             Column(
@@ -590,7 +919,8 @@ fun SearchScreen() {
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .padding(vertical = 4.dp)
             ) {
-                suggestions.forEach { suggestion ->
+                SearchVm.suggestions.forEach { suggestion ->
+                    val fromHistory = searchHistory.any { it.equals(suggestion, ignoreCase = true) }
                     Row(
                         Modifier.fillMaxWidth()
                             .clickable {
@@ -602,7 +932,7 @@ fun SearchScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Filled.Search,
+                            if (fromHistory) Icons.Filled.History else Icons.Filled.Search,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
@@ -642,6 +972,8 @@ fun SearchScreen() {
                         albums = SearchVm.albums,
                         playlists = SearchVm.playlists,
                         searchedArtists = SearchVm.artists,
+                        lyricsResults = SearchVm.lyricsResults,
+                        lyricsLoading = SearchVm.lyricsLoading,
                         filter = filter,
                         onOpenPlaylist = { openPlaylist = it },
                         onOpenArtist = { openArtist = it }
@@ -788,6 +1120,9 @@ private fun SearchTopResult(song: Song, kind: String = "Song") {
 
 @Composable
 private fun SearchResultSongRow(song: Song, kind: String) {
+    var showActions by remember(song.url) { mutableStateOf(false) }
+    val blocked by Settings.blockedArtists.collectAsState()
+    val isBlockedArtist = blocked.any { it.equals(song.artist, true) }
     Row(
         Modifier.fillMaxWidth()
             .clickable { PlayerClient.playDiscovery(song) }
@@ -806,12 +1141,66 @@ private fun SearchResultSongRow(song: Song, kind: String) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(3.dp))
-            ResultTypeLabel(kind)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                ResultTypeLabel(kind)
+                if (isBlockedArtist) Text("Blocked Artist", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+            }
         }
         IconButton(onClick = { PlayerClient.addToQueue(song) }) {
             Icon(Icons.Filled.QueueMusic, "Add to queue")
         }
+        IconButton(onClick = { showActions = true }) {
+            Icon(Icons.Filled.MoreVert, "More")
+        }
     }
+    if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
+}
+
+@Composable
+private fun LyricsSearchResultRow(result: LyricsSearchResult) {
+    val song = result.song
+    val descriptor = result.descriptor
+    var showActions by remember(song.url) { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable {
+                LyricsSearchAvailabilityIndex.attachForPlayback(result)
+                PlayerClient.playDiscovery(song)
+            }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Art(song.thumb, Modifier.size(58.dp), RoundedCornerShape(10.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            Text(
+                song.artist,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                ResultTypeLabel(descriptor.badge)
+                Text(
+                    descriptor.sourceProvider,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        IconButton(onClick = { PlayerClient.addToQueue(song) }) {
+            Icon(Icons.Filled.QueueMusic, "Add to queue")
+        }
+        IconButton(onClick = { showActions = true }) {
+            Icon(Icons.Filled.MoreVert, "More")
+        }
+    }
+    if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
 }
 
 @Composable
@@ -887,6 +1276,8 @@ private fun RichSearchResults(
     albums: List<RemotePlaylist>,
     playlists: List<RemotePlaylist>,
     searchedArtists: List<TopArtist>,
+    lyricsResults: List<LyricsSearchResult>,
+    lyricsLoading: Boolean,
     filter: Int,
     onOpenPlaylist: (RemotePlaylist) -> Unit,
     onOpenArtist: (TopArtist) -> Unit
@@ -943,13 +1334,46 @@ private fun RichSearchResults(
             }
 
             2 -> {
+                item { SearchSectionTitle("Lyrics") }
+                when {
+                    lyricsResults.isNotEmpty() -> {
+                        itemsIndexed(lyricsResults, key = { i, result -> "lyrics-${result.song.url}-$i" }) { _, result ->
+                            LyricsSearchResultRow(result)
+                        }
+                        if (lyricsLoading) {
+                            item {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text("Checking more lyrics-ready versions…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    lyricsLoading -> item {
+                        Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    }
+                    else -> item {
+                        Text(
+                            "Is search mein abhi koi verified in-app lyrics result nahi mila.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(24.dp)
+                        )
+                    }
+                }
+            }
+
+            3 -> {
                 item { SearchSectionTitle("Videos") }
                 itemsIndexed(videos, key = { i, song -> "video-${song.url}-$i" }) { _, video ->
                     SearchResultSongRow(video, "Video")
                 }
             }
 
-            3 -> {
+            4 -> {
                 if (albums.isEmpty()) {
                     item {
                         Text(
@@ -1027,7 +1451,7 @@ private fun PlaylistShelf(
 }
 
 @Composable
-fun RemotePlaylistScreen(playlist: RemotePlaylist, onBack: () -> Unit) {
+fun RemotePlaylistScreen(playlist: RemotePlaylist, onBack: () -> Unit, fullScreenOverlay: Boolean = false) {
     BackHandler(onBack = onBack)
     val songs by produceState<List<Song>?>(null, playlist.url) {
         value = withContext(Dispatchers.IO) {
@@ -1035,11 +1459,25 @@ fun RemotePlaylistScreen(playlist: RemotePlaylist, onBack: () -> Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    val rootModifier = Modifier
+        .fillMaxSize()
+        .background(MaterialTheme.colorScheme.background)
+        .then(
+            if (fullScreenOverlay) {
+                Modifier.statusBarsPadding().navigationBarsPadding()
+            } else {
+                Modifier
+            }
+        )
+
+    Box(rootModifier) {
+        LiveThemeBackdrop(Modifier.fillMaxSize())
+
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
             Art(playlist.thumb, Modifier.size(54.dp), RoundedCornerShape(10.dp))
             Spacer(Modifier.width(10.dp))
@@ -1067,6 +1505,7 @@ fun RemotePlaylistScreen(playlist: RemotePlaylist, onBack: () -> Unit) {
                 discoveryMode = false
             )
         }
+        }
     }
 }
 
@@ -1075,7 +1514,7 @@ fun RemotePlaylistScreen(playlist: RemotePlaylist, onBack: () -> Unit) {
 @Composable
 fun LibraryScreen() {
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Downloads", "Liked", "Playlists", "History", "Stats")
+    val titles = listOf("Downloads", "Liked", "Playlists", "History", "Local", "Podcasts", "Stats")
     val downloads by Store.downloads.collectAsState()
     val liked by Store.liked.collectAsState()
     val history by Store.history.collectAsState()
@@ -1091,7 +1530,7 @@ fun LibraryScreen() {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = { tab = 4 }) {
+            TextButton(onClick = { tab = 6 }) {
                 Text("Listening Stats", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
         }
@@ -1112,6 +1551,8 @@ fun LibraryScreen() {
                 }
                 SongList(history, "History khali hai.")
             }
+            4 -> LocalMusicScreen()
+            5 -> PodcastsScreen()
             else -> ListeningStatsScreen()
         }
     }

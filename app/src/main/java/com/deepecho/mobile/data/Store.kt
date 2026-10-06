@@ -1,6 +1,7 @@
 package com.deepecho.mobile.data
 
 import android.content.Context
+import com.deepecho.mobile.net.Downloads
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -54,6 +55,7 @@ object Store {
 
     private val _liked = MutableStateFlow<List<Song>>(emptyList())
     private val _history = MutableStateFlow<List<Song>>(emptyList())
+    private val historyTimes = linkedMapOf<String, Long>()
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
     private val _downloads = MutableStateFlow<List<DownloadItem>>(emptyList())
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
@@ -79,6 +81,15 @@ object Store {
             val o = JSONObject(file.readText())
             _liked.value = o.optJSONArray("liked").toSongs()
             _history.value = o.optJSONArray("history").toSongs()
+            historyTimes.clear()
+            o.optJSONObject("history_times")?.let { times ->
+                val keys = times.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    historyTimes[key] = times.optLong(key, 0L)
+                }
+            }
+            pruneHistoryByDuration()
             val searches = o.optJSONArray("search_history")
             _searchHistory.value = if (searches == null) emptyList() else (0 until searches.length())
                 .mapNotNull { searches.optString(it).trim().takeIf(String::isNotBlank) }
@@ -128,6 +139,9 @@ object Store {
             val o = JSONObject()
             o.put("liked", _liked.value.toJsonArray())
             o.put("history", _history.value.toJsonArray())
+            val historyTimeJson = JSONObject()
+            historyTimes.forEach { (url, at) -> historyTimeJson.put(url, at) }
+            o.put("history_times", historyTimeJson)
             val searches = JSONArray()
             _searchHistory.value.forEach { searches.put(it) }
             o.put("search_history", searches)
@@ -172,19 +186,42 @@ object Store {
     fun isLiked(url: String) = _liked.value.any { it.url == url }
 
     fun toggleLike(song: Song) {
-        _liked.value = if (isLiked(song.url)) _liked.value.filter { it.url != song.url }
+        val wasLiked = isLiked(song.url)
+        _liked.value = if (wasLiked) _liked.value.filter { it.url != song.url }
         else listOf(song) + _liked.value
         save()
+        if (!wasLiked && Settings.autoDownloadOnLike.value) {
+            Downloads.start(song)
+        }
     }
 
     // ---- history ----
     fun addHistory(song: Song) {
-        _history.value = (listOf(song) + _history.value.filter { it.url != song.url }).take(200)
+        historyTimes[song.url] = System.currentTimeMillis()
+        _history.value = (listOf(song) + _history.value.filter { it.url != song.url }).take(1000)
+        pruneHistoryByDuration()
+        save()
+    }
+
+    private fun pruneHistoryByDuration() {
+        val keepMs = Settings.historyDurationDays.value.coerceIn(1, 365) * 24L * 60L * 60L * 1000L
+        val cutoff = System.currentTimeMillis() - keepMs
+        _history.value = _history.value.filter { song ->
+            val at = historyTimes[song.url] ?: System.currentTimeMillis()
+            at >= cutoff
+        }.take(1000)
+        val kept = _history.value.mapTo(hashSetOf()) { it.url }
+        historyTimes.keys.retainAll(kept)
+    }
+
+    fun refreshHistoryRetention() {
+        pruneHistoryByDuration()
         save()
     }
 
     fun clearHistory() {
         _history.value = emptyList()
+        historyTimes.clear()
         save()
     }
 
@@ -286,7 +323,10 @@ object Store {
     }
 
     fun removeDownload(url: String) {
-        _downloads.value.firstOrNull { it.song.url == url }?.let { File(it.path).delete() }
+        _downloads.value.firstOrNull { it.song.url == url }?.let { item ->
+            File(item.path).delete()
+            File(item.path + ".deepecho.json").delete()
+        }
         _downloads.value = _downloads.value.filter { it.song.url != url }
         save()
     }

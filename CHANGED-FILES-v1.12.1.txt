@@ -1,0 +1,10 @@
+v1.12.1 changes from v1.12.0:
+- app/src/main/java/com/deepecho/mobile/ui/SongActions.kt
+  - Made the 3-dot song action bottom sheet explicitly vertically scrollable.
+  - Lower actions such as Set as Ringtone, Lyrics Save/Share, Details, Equalizer, Advanced and Block Artist are now reachable on short screens/emulators.
+- app/build.gradle.kts
+  - versionCode 30, versionName 1.12.1.
+- app/src/main/java/com/deepecho/mobile/ui/SettingsScreen.kt
+  - version label updated to 1.12.1 TEST.
+- build_apk.bat / BUILD-TEST-APK-v1.12.1.bat
+  - build/output naming updated.

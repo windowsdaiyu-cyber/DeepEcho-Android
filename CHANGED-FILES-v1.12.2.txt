@@ -1,0 +1,27 @@
+Modified:
+- app/build.gradle.kts
+- app/src/main/java/com/deepecho/mobile/DeepEchoApp.kt
+- app/src/main/java/com/deepecho/mobile/net/Lrclib.kt
+- app/src/main/java/com/deepecho/mobile/overlay/FloatingLyricsService.kt
+- app/src/main/java/com/deepecho/mobile/player/AudioReactive.kt
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+- app/src/main/java/com/deepecho/mobile/ui/SettingsScreen.kt
+- build_apk.bat
+
+Added:
+- app/src/main/java/com/deepecho/mobile/lyrics/CaptionResolver.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LrclibProvider.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsAlignmentEngine.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsAudioVerifier.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsCache.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsCandidate.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsDiagnostics.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsFeatureFlags.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsMetadata.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsOrchestrator.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsProgress.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsRuntimeSync.kt
+- app/src/test/java/com/deepecho/mobile/lyrics/UniversalLyricsV2Test.kt
+- BUILD-TEST-APK-v1.12.2.bat
+- TEST-NOTES-v1.12.2.md
+- CHANGED-FILES-v1.12.2.txt

@@ -1,0 +1,14 @@
+app/build.gradle.kts
+build_apk.bat
+BUILD-TEST-APK-v1.12.3.bat
+app/src/main/java/com/deepecho/mobile/net/Lrclib.kt
+app/src/main/java/com/deepecho/mobile/lyrics/LyricsAlignmentEngine.kt
+app/src/main/java/com/deepecho/mobile/lyrics/LyricsFeatureFlags.kt
+app/src/main/java/com/deepecho/mobile/lyrics/LyricsOrchestrator.kt
+app/src/main/java/com/deepecho/mobile/lyrics/LyricsRepairMode.kt (new)
+app/src/main/java/com/deepecho/mobile/lyrics/LyricsTextRefiner.kt (new)
+app/src/main/java/com/deepecho/mobile/lyrics/LyricsTranscriptionFallback.kt (new)
+app/src/test/java/com/deepecho/mobile/lyrics/UniversalLyricsV123TextRepairTest.kt (new)
+TEST-NOTES-v1.12.3.md
+TEST-REPORT-v1.12.3.md
+CHANGED-FILES-v1.12.3.txt

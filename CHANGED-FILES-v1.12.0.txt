@@ -1,0 +1,29 @@
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE: BUILD-TEST-APK-v1.11.0.bat
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE: BUILD-TEST-APK-v1.12.0.bat
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE: CHANGED-FILES-v1.12.0.txt
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/README.md and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/README.md differ
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE: TEST-NOTES-v1.12.0.md
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE: TEST-REPORT-v1.12.0.md
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/build.gradle.kts and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/build.gradle.kts differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/AndroidManifest.xml and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/AndroidManifest.xml differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/DeepEchoApp.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/DeepEchoApp.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/MainActivity.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/MainActivity.kt differ
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/data: LocalMusic.kt
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/data: Podcasts.kt
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/data: RingtoneMaker.kt
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/data/Settings.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/data/Settings.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/net/Downloads.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/net/Downloads.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/net/YouTubeApi.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/net/YouTubeApi.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/player/PlaybackService.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/player/PlaybackService.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/Common.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/Common.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/ListeningStatsScreen.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/ListeningStatsScreen.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/PlayerAudioSettingsScreen.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/PlayerAudioSettingsScreen.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/Screens.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/Screens.kt differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/SettingsScreen.kt and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui/SettingsScreen.kt differ
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui: SongActions.kt
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui: UiEvents.kt
+Only in /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/java/com/deepecho/mobile/ui: UtilityScreens.kt
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/app/src/main/res/xml/update_file_paths.xml and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/app/src/main/res/xml/update_file_paths.xml differ
+Files /mnt/data/DEEP-ECHO-Mobile-v1.11.0-RUBY-LIVE-UI-TEST-SOURCE/build_apk.bat and /mnt/data/DEEP-ECHO-Mobile-v1.12.0-MAJOR-UTILITY-TEST-SOURCE/build_apk.bat differ

@@ -5,9 +5,10 @@ package com.deepecho.mobile.data
  * Uses title, artist and artwork identity; when a previous theme is supplied it avoids repeating the same colour on consecutive songs so Auto Theme visibly reacts.
  */
 object ThemeAdvisor {
-    private val themes = listOf("Golden", "Rose", "Violet", "Ocean", "Emerald", "AMOLED")
+    private val themes = listOf("Golden", "Ruby", "Rose", "Violet", "Ocean", "Emerald", "AMOLED")
 
     private val keywords = mapOf(
+        "Ruby" to listOf("ruby", "red", "fire", "flame", "blood", "heat", "power", "energy", "rage", "rock", "intense", "wild"),
         "Rose" to listOf("love", "romantic", "romance", "ishq", "pyaar", "pyar", "mohabbat", "dil", "heart", "jaan", "lover", "tum", "tera", "meri", "mein"),
         "Violet" to listOf("sad", "alone", "broken", "yaad", "memory", "memories", "moon", "khamosh", "lonely", "dream", "midnight", "phir", "judai"),
         "Ocean" to listOf("rain", "baarish", "barish", "blue", "ocean", "sea", "wave", "chill", "lofi", "lo-fi", "acoustic", "sukoon", "calm", "soft"),
@@ -17,6 +18,7 @@ object ThemeAdvisor {
     )
 
     private val artistHints = mapOf(
+        "Ruby" to listOf("seedhe maut", "kr\$na", "raftaar", "divine", "eminem", "linkin park"),
         "Rose" to listOf("arijit", "anuv jain", "mithoon", "pritam", "atif", "shreya"),
         "Golden" to listOf("badshah", "diljit", "yo yo", "neha kakkar", "karan aujla"),
         "Violet" to listOf("kk", "mohit chauhan", "jubin"),

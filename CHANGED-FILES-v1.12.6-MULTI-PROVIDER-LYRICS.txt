@@ -1,0 +1,36 @@
+DEEP-ECHO Mobile v1.12.6 — Multi-Provider Lyrics / Text Repair
+
+Existing production files intentionally modified:
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsCandidate.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsFeatureFlags.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsMetadata.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsOrchestrator.kt
+
+New production files:
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsFormatParsers.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsProviderAdapters.kt
+
+New tests:
+- app/src/test/java/com/deepecho/mobile/lyrics/MultiProviderLyricsV126Test.kt
+
+Packaging/test tooling:
+- build_apk.bat (test + output label only)
+- TEST-NOTES-v1.12.6-MULTI-PROVIDER-LYRICS.md
+- CHANGED-FILES-v1.12.6-MULTI-PROVIDER-LYRICS.txt
+
+Protected production files confirmed byte-identical to the v1.12.6 Compact Lyrics UI base include:
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+- app/src/main/java/com/deepecho/mobile/player/PlaybackService.kt
+- app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt
+- app/src/main/java/com/deepecho/mobile/net/Downloads.kt
+- app/src/main/java/com/deepecho/mobile/net/YouTubeApi.kt
+- app/src/main/java/com/deepecho/mobile/net/AppUpdater.kt
+- app/src/main/java/com/deepecho/mobile/overlay/FloatingLyricsService.kt
+- app/src/main/java/com/deepecho/mobile/data/TasteEngine.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/CaptionResolver.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsAlignmentEngine.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsRuntimeSync.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsTextRefiner.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsVideoRecovery.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsVideoOcrProcessor.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsLiveVideoReader.kt

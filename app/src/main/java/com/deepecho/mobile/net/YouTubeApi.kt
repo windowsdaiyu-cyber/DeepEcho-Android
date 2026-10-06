@@ -1,5 +1,8 @@
 package com.deepecho.mobile.net
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Song
 import com.deepecho.mobile.data.TopArtist
@@ -20,6 +23,13 @@ import java.util.concurrent.CompletableFuture
 
 data class Resolved(val url: String, val ext: String)
 
+data class ResolvedVideo(
+    val url: String,
+    val width: Int,
+    val height: Int,
+    val resolution: String
+)
+
 data class RemotePlaylist(
     val url: String,
     val title: String,
@@ -35,6 +45,18 @@ data class RemotePlaylist(
  */
 object YouTubeApi {
     private val yt get() = ServiceList.YouTube
+    private var appContext: Context? = null
+    fun init(ctx: Context) { appContext = ctx.applicationContext }
+
+    private fun effectiveStreamQuality(): Int {
+        if (Settings.dataSaverMode.value) return 0
+        val ctx = appContext ?: return Settings.quality.value
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return Settings.quality.value
+        val caps = cm.activeNetwork?.let(cm::getNetworkCapabilities)
+        return if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+        ) Settings.wifiQuality.value else Settings.mobileQuality.value
+    }
 
     private val searchCache = ConcurrentHashMap<String, Pair<Long, List<Song>>>()
     private val videoSearchCache = ConcurrentHashMap<String, Pair<Long, List<Song>>>()
@@ -43,6 +65,8 @@ object YouTubeApi {
     private val artistSearchCache = ConcurrentHashMap<String, Pair<Long, List<TopArtist>>>()
     private val playlistOpenCache = ConcurrentHashMap<String, Pair<Long, List<Song>>>()
     private val streamCache = ConcurrentHashMap<String, Pair<Long, Resolved>>()
+    private val videoStreamCache = ConcurrentHashMap<String, Pair<Long, ResolvedVideo>>()
+    private val suggestionCache = ConcurrentHashMap<String, Pair<Long, List<String>>>()
     private val inFlightResolves = ConcurrentHashMap<String, CompletableFuture<Resolved>>()
 
 
@@ -52,15 +76,45 @@ object YouTubeApi {
             val w = image.width
             val h = image.height
             val known = w > 0 && h > 0
-            val square = if (known) {
-                val big = maxOf(w, h).toDouble()
-                val small = minOf(w, h).toDouble()
-                (small / big * 1_000_000.0).toLong()
-            } else 350_000L
-            val area = if (known) (w.toLong() * h.toLong()).coerceAtMost(4_000_000L) else 0L
-            // Square album art dominates; resolution breaks ties.
-            square * 10L + area
+            if (!known) return@maxByOrNull 0L
+
+            val big = maxOf(w, h).toDouble().coerceAtLeast(1.0)
+            val small = minOf(w, h).toDouble()
+            val squareScore = (small / big * 1_000_000.0).toLong()
+            val area = (w.toLong() * h.toLong()).coerceAtMost(8_000_000L)
+
+            // v1.10.8: resolution is the primary signal. Older builds over-weighted squareness,
+            // which could choose a tiny 120x120 image over a much sharper 720p/1080p image.
+            // Keep a moderate square-art bonus, but never at the expense of a large quality jump.
+            area * 8L + squareScore * 2L
         }?.url
+    }
+
+
+    /**
+     * Real YouTube typeahead from NewPipe's YouTube SuggestionExtractor. This uses the
+     * same extractor stack as DeepEcho search and avoids fake locally generated suffixes.
+     */
+    fun searchSuggestions(query: String, limit: Int = 10): List<String> {
+        val clean = query.trim().replace(Regex("\\s+"), " ")
+        if (clean.length < 2) return emptyList()
+        val key = clean.lowercase()
+        suggestionCache[key]?.let { cached ->
+            if (System.currentTimeMillis() - cached.first < 5 * 60_000L) {
+                return cached.second.take(limit)
+            }
+        }
+
+        val results = runCatching {
+            yt.suggestionExtractor.suggestionList(clean)
+        }.getOrDefault(emptyList())
+            .map { it.trim().replace(Regex("\\s+"), " ") }
+            .filter { it.isNotBlank() && !it.equals(clean, true) }
+            .distinctBy { it.lowercase() }
+            .take(limit)
+
+        if (results.isNotEmpty()) suggestionCache[key] = System.currentTimeMillis() to results
+        return results
     }
 
     /** Default discovery search: music songs first, videos as a safe fallback. */
@@ -231,7 +285,8 @@ object YouTubeApi {
 
             val pool = all.filter { it.format == MediaFormat.M4A }.ifEmpty { all }
             val sorted = pool.sortedBy { it.averageBitrate }
-            val pick = when (Settings.quality.value) {
+            val streamQuality = effectiveStreamQuality()
+            val pick = when (streamQuality) {
                 0 -> sorted.first()
                 1 -> sorted[sorted.size / 2]
                 else -> sorted.last()
@@ -250,7 +305,79 @@ object YouTubeApi {
         }
     }
 
+
+    /** Separate download resolver so download quality can differ from streaming quality. */
+    fun resolveForDownload(videoUrl: String): Resolved {
+        val info = StreamInfo.getInfo(yt, videoUrl)
+        val all = info.audioStreams.filter {
+            it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP && !it.content.isNullOrEmpty()
+        }
+        if (all.isEmpty()) throw IOException("Is gaane ka audio stream nahi mila")
+
+        val pool = all.filter { it.format == MediaFormat.M4A }.ifEmpty { all }
+        val sorted = pool.sortedBy { it.averageBitrate }
+        val pick = when (Settings.downloadQuality.value) {
+            0 -> sorted.first()
+            1 -> sorted[sorted.size / 2]
+            else -> sorted.last()
+        }
+        return Resolved(pick.content, pick.format?.suffix ?: "m4a")
+    }
+
+
+    /**
+     * Resolve a direct progressive video stream for the Ambient player. This bypasses
+     * YouTube iframe/WebView embedding entirely (which can fail with player error 153
+     * when Android does not provide an accepted HTTP referrer). Audio is muted in the
+     * Ambient player; DeepEcho's normal PlaybackService remains the audio source.
+     */
+    fun resolveVideo(videoUrl: String, forceFresh: Boolean = false): ResolvedVideo {
+        if (!forceFresh) {
+            videoStreamCache[videoUrl]?.let { cached ->
+                if (System.currentTimeMillis() - cached.first < 45 * 60_000L) return cached.second
+            }
+        } else {
+            videoStreamCache.remove(videoUrl)
+        }
+
+        val info = StreamInfo.getInfo(yt, videoUrl)
+        // Ambient video is muted, so video-only streams are perfectly valid and often
+        // more widely available than legacy muxed YouTube streams.
+        val available = (info.videoStreams + info.videoOnlyStreams)
+            .filter { it.content.isNotBlank() && it.content.startsWith("http") }
+            .distinctBy { it.content }
+        if (available.isEmpty()) throw IOException("Is video ka direct video stream nahi mila")
+
+        // YouTube increasingly exposes the useful muted video track as a DASH-labelled direct
+        // googlevideo URL rather than a legacy progressive mux. Media3 can play the direct MP4
+        // URL, so do not reject it merely because NewPipe labels the delivery method DASH.
+        val mp4 = available.filter { it.format == MediaFormat.MPEG_4 }.ifEmpty { available }
+        val known = mp4.filter { it.height > 0 }
+        val pick = if (known.isNotEmpty()) {
+            val under720 = known.filter { it.height <= 720 }
+            val qualityPool = if (under720.isNotEmpty()) under720 else known
+            qualityPool.maxByOrNull { stream ->
+                val progressiveBonus = if (stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP) 10_000 else 0
+                progressiveBonus + stream.height
+            }!!
+        } else {
+            mp4.first()
+        }
+
+        val resolved = ResolvedVideo(
+            url = pick.content,
+            width = pick.width.coerceAtLeast(0),
+            height = pick.height.coerceAtLeast(0),
+            resolution = pick.resolution.ifBlank {
+                if (pick.height > 0) "${pick.height}p" else "video"
+            }
+        )
+        videoStreamCache[videoUrl] = System.currentTimeMillis() to resolved
+        return resolved
+    }
+
     fun invalidate(videoUrl: String) {
         streamCache.remove(videoUrl)
+        videoStreamCache.remove(videoUrl)
     }
 }

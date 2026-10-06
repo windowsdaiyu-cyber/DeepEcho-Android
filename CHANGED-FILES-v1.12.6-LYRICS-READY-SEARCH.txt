@@ -1,0 +1,46 @@
+DeepEcho Mobile v1.12.6 - Lyrics Ready Search Tab
+
+PRODUCTION CHANGES
+- app/src/main/java/com/deepecho/mobile/ui/Screens.kt
+  - Adds Search tab order: All | Songs | Lyrics | Videos | Albums | Artists.
+  - Adds cancellable, bounded lyrics-availability probing after normal Search results are available.
+  - Lyrics tab shows only deliverable/verified results with compact DeepEcho badges.
+  - Tapping a Lyrics result uses normal PlayerClient.playDiscovery().
+
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsSearchAvailability.kt (NEW)
+  - Adds LyricsResolutionDescriptor and explicit availability states.
+  - Cache-first availability index with positive/miss TTLs.
+  - Current LRCLIB first, bounded LRCLIB search fallback, existing multi-provider fallback, and captions.
+  - No OCR, frame extraction, Exact Lyrics recovery, or transcription is invoked during Search.
+  - Covers/live/remix/slowed/sped-up/music-video variants require current-upload grounding before provider timing can be treated as deliverable.
+  - Search results retain verified fallback lyrics for playback if the primary provider later fails.
+
+- app/src/main/java/com/deepecho/mobile/lyrics/LrclibProvider.kt
+  - Adds bounded searchAvailability() for Search discovery only.
+  - Existing playback search() is unchanged.
+
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsOrchestrator.kt
+  - Current existing provider remains first.
+  - Only after it cannot deliver, an attached Lyrics-tab verified fallback may be reused.
+  - Verified plain text is passed through the existing current alignment/caption stages first.
+  - Existing LyricsTextRefiner is preserved for attached fallback text without changing timing.
+
+TEST/BUILDER CHANGES
+- app/src/test/java/com/deepecho/mobile/lyrics/LyricsSearchTabV126Test.kt (NEW)
+  - Strong provider -> synced lyrics.
+  - Word timing -> WORD SYNC.
+  - Estimated timing -> text-only, not fake synced.
+  - Lyrics-video title alone does not establish Lyrics Ready.
+  - Wrong same-title performer rejected.
+  - Cover provider timing rejected without current-audio grounding.
+  - Different playback versions remain distinct.
+  - Quality ranking prefers word sync over plain text.
+
+- build_apk.bat
+  - Test APK output renamed to DEEP-ECHO-Mobile-v1.12.6-LYRICS-READY-SEARCH-TEST.apk.
+
+NOT MODIFIED
+PlaybackService, PlayerClient, PlayerScreen, Downloads, YouTubeApi, Ambient Mode implementation,
+FloatingLyricsService, LyricsRuntimeSync, LyricsAlignmentEngine, LyricsTextRefiner,
+LyricsVideoRecovery, LyricsVideoOcrProcessor, LyricsLiveVideoReader, CaptionResolver,
+LyricsProviderAdapters, queue, Smart Autoplay, themes, visualizers, Home and download/local engines.

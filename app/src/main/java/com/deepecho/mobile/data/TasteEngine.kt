@@ -69,56 +69,47 @@ object TasteEngine {
         return out.values.take(limit)
     }
 
-    /** Fast local typeahead: no network request is fired on every keystroke. */
+    /**
+     * Personalized local typeahead used only as a fallback/boost for the real YouTube
+     * autocomplete feed. Never manufactures low-value suffixes such as "songs",
+     * "official song", "album", or "artist".
+     */
     fun searchSuggestions(input: String, extraSongs: List<Song> = emptyList(), limit: Int = 8): List<String> {
         val q = input.trim().replace(Regex("\\s+"), " ")
         if (q.length < 2) return emptyList()
         val ql = q.lowercase()
         val source = (signals() + extraSongs).distinctBy { it.url }
         val recentSearches = Store.searchHistory.value
-        val favoriteArtists = topArtists(12).map { it.name }
 
         data class Candidate(val text: String, val weight: Int)
         val candidates = mutableListOf<Candidate>()
 
         recentSearches.forEachIndexed { index, text ->
-            candidates += Candidate(text, 240 - index * 3)
+            candidates += Candidate(text, 320 - index * 4)
         }
-        favoriteArtists.forEachIndexed { index, artist ->
-            candidates += Candidate(artist, 210 - index * 2)
-            candidates += Candidate("$artist songs", 185 - index)
-        }
-        source.take(180).forEachIndexed { index, song ->
-            if (song.title.isNotBlank()) candidates += Candidate(song.title, 175 - (index / 12))
-            if (song.artist.isNotBlank()) candidates += Candidate(song.artist, 165 - (index / 12))
+        source.take(220).forEachIndexed { index, song ->
+            val decay = index / 10
+            if (song.title.isNotBlank()) candidates += Candidate(song.title, 260 - decay)
+            if (song.artist.isNotBlank()) candidates += Candidate(song.artist, 225 - decay)
             if (song.title.isNotBlank() && song.artist.isNotBlank()) {
-                candidates += Candidate("${song.title} ${song.artist}", 150 - (index / 14))
+                candidates += Candidate("${song.title} ${song.artist}", 245 - decay)
             }
         }
 
-        val generated = buildList {
-            add(Candidate("$q songs", 145))
-            add(Candidate("$q official song", 142))
-            add(Candidate("$q album", 139))
-            add(Candidate("$q artist", 136))
-            add(Candidate("$q playlist", 132))
-            favoriteArtists.firstOrNull()?.let { add(Candidate("$q $it", 128)) }
-        }
-
-        return (candidates + generated)
-            .mapNotNull { candidate ->
-                val text = candidate.text.trim().replace(Regex("\\s+"), " ")
-                if (text.isBlank() || text.equals(q, true)) return@mapNotNull null
-                val lower = text.lowercase()
-                val matchBoost = when {
-                    lower.startsWith(ql) -> 120
-                    lower.split(' ').any { it.startsWith(ql) } -> 95
-                    lower.contains(ql) -> 70
-                    ql.split(' ').all { token -> token.length < 2 || lower.contains(token) } -> 36
-                    else -> return@mapNotNull null
-                }
-                Triple(text, candidate.weight + matchBoost, lower)
+        return candidates.mapNotNull { candidate ->
+            val text = candidate.text.trim().replace(Regex("\\s+"), " ")
+            if (text.isBlank() || text.equals(q, true)) return@mapNotNull null
+            val lower = text.lowercase()
+            val tokenMatch = ql.split(' ').filter { it.length >= 2 }.all { lower.contains(it) }
+            val matchBoost = when {
+                lower.startsWith(ql) -> 180
+                lower.split(Regex("\\s+")).any { it.startsWith(ql) } -> 125
+                lower.contains(ql) -> 90
+                tokenMatch -> 45
+                else -> return@mapNotNull null
             }
+            Triple(text, candidate.weight + matchBoost, lower)
+        }
             .sortedByDescending { it.second }
             .distinctBy { it.third }
             .map { it.first }

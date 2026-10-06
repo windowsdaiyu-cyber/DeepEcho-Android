@@ -1,0 +1,37 @@
+DeepEcho Android v1.12.4 — Manual Video OCR Exact Lyrics
+
+Changed/additive files:
+- app/build.gradle.kts
+  - versionCode 33 / versionName 1.12.4
+  - bundled ML Kit Latin text recognition dependency for on-demand OCR
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsFeatureFlags.kt
+  - manualVideoOcrRecovery gate
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsOrchestrator.kt
+  - manual Exact Lyrics entry point; normal fetch() unchanged
+  - existing-good-result quality guard
+- app/src/main/java/com/deepecho/mobile/net/Lrclib.kt
+  - manual recovery facade + cancellation facade
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+  - Exact Lyrics / Retry routes to manual recovery; song disposal cancels stale recovery
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsVideoSourceResolver.kt [NEW]
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsVideoOcrProcessor.kt [NEW]
+- app/src/main/java/com/deepecho/mobile/lyrics/OcrLyricsCleaner.kt [NEW]
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsAudioFingerprintAligner.kt [NEW]
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsVideoRecovery.kt [NEW]
+- app/src/test/java/com/deepecho/mobile/lyrics/ManualVideoOcrRecoveryV124Test.kt [NEW]
+- build_apk.bat
+- BUILD-TEST-APK-v1.12.4.bat [NEW]
+- TEST-NOTES-v1.12.4.md [NEW]
+- TEST-REPORT-v1.12.4.md [NEW]
+
+Intentionally NOT modified:
+- PlaybackService / PlayerClient
+- YouTubeApi streaming/search implementation
+- Downloads / YtDownloader
+- Queue / Smart Autoplay / TasteEngine
+- Home / Search data flows
+- Local playback
+- AppUpdater / media session
+- FloatingLyricsService
+- Ambient/video playback implementation
+- visualizer/theme engines

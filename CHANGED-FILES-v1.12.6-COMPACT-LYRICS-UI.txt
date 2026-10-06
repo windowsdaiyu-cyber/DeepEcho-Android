@@ -1,0 +1,4 @@
+app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+build_apk.bat
+TEST-NOTES-v1.12.6-COMPACT-LYRICS-UI.md
+CHANGED-FILES-v1.12.6-COMPACT-LYRICS-UI.txt

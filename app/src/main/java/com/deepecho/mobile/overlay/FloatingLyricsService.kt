@@ -22,6 +22,7 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.deepecho.mobile.data.Settings
+import com.deepecho.mobile.lyrics.LyricsRuntimeSync
 import com.deepecho.mobile.net.Lrclib
 import com.deepecho.mobile.net.Lyrics
 import com.deepecho.mobile.player.AudioReactive
@@ -74,6 +75,7 @@ class FloatingLyricsService : Service() {
     private var lyrics: Lyrics? = null
     private var lastLine: String? = null
     private var lastCaptureAttemptAt: Long = 0L
+    private var overlayTheme: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -192,15 +194,22 @@ class FloatingLyricsService : Service() {
     private fun createOverlay() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         windowManager = wm
+        overlayTheme = Settings.theme.value
         val colors = themeColors(Settings.theme.value)
         val accent = colors.accent
+
+        val overlayGradient = if (Settings.theme.value == "Ruby") {
+            intArrayOf(0xB0180509.toInt(), 0x8A2A0810.toInt(), 0x66100609.toInt())
+        } else {
+            intArrayOf(0x6A080808, 0x4A111111, 0x30080808)
+        }
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(10), dp(18), dp(12))
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0x6A080808, 0x4A111111, 0x30080808)
+                overlayGradient
             ).apply {
                 cornerRadius = dp(22).toFloat()
                 setStroke(dp(1), accent)
@@ -382,6 +391,16 @@ class FloatingLyricsService : Service() {
     }
 
     private suspend fun refreshLyrics() {
+        if (overlayTheme != Settings.theme.value) {
+            root?.let { view -> runCatching { windowManager?.removeView(view) } }
+            root = null
+            titleView = null
+            lyricView = null
+            nextView = null
+            playPauseView = null
+            graphView = null
+            createOverlay()
+        }
         playPauseView?.text = if (PlayerClient.isPlaying) "Ⅱ" else "▶"
         val now = System.currentTimeMillis()
         if (!AudioReactive.realCapture.value && now - lastCaptureAttemptAt > 2_000L) {
@@ -403,7 +422,11 @@ class FloatingLyricsService : Service() {
             songUrl = song.url
             lyrics = null
             lastLine = null
-            titleView?.text = "${song.title} • ${song.artist}"
+            titleView?.text = if (Settings.theme.value == "Ruby") {
+                "RUBY LIVE • ${song.title} • ${song.artist}"
+            } else {
+                "${song.title} • ${song.artist}"
+            }
             setLyricAnimated("Loading lyrics…")
             nextView?.text = ""
             lyrics = withContext(Dispatchers.IO) {
@@ -416,12 +439,21 @@ class FloatingLyricsService : Service() {
         val text = if (data == null) {
             "♪ ${song.title}"
         } else if (data.synced.isNotEmpty()) {
-            val pos = PlayerClient.positionMs
-            val index = data.synced.indexOfLast { it.timeMs <= pos }
-            nextText = data.synced.getOrNull(index + 1)?.text.orEmpty()
-            data.synced.getOrNull(index)?.text
-                ?: data.synced.firstOrNull()?.text
-                ?: "♪ ${song.title}"
+            val manualOffset = Settings.getInt("lyrics_offset_${song.videoId}", 0).toLong()
+            val rawPos = (PlayerClient.positionMs + manualOffset).coerceAtLeast(0L)
+            val pos = LyricsRuntimeSync.effectivePosition(
+                song.url, rawPos, data, AudioReactive.realCapture.value, AudioReactive.vocalLikelihood.value
+            )
+            val index = if (pos < 0L) -1 else data.synced.indexOfLast { it.timeMs <= pos }
+            if (index < 0) {
+                nextText = data.synced.firstOrNull()?.text.orEmpty()
+                "♪ Instrumental"
+            } else {
+                nextText = data.synced.getOrNull(index + 1)?.text.orEmpty()
+                data.synced.getOrNull(index)?.text
+                    ?: data.synced.firstOrNull()?.text
+                    ?: "♪ ${song.title}"
+            }
         } else {
             val lines = data.plain?.lineSequence()?.filter { it.isNotBlank() }?.toList().orEmpty()
             nextText = lines.getOrNull(1).orEmpty()
@@ -447,9 +479,10 @@ class FloatingLyricsService : Service() {
         val view = lyricView ?: return
         val colors = themeColors(Settings.theme.value)
         val e = if (PlayerClient.isPlaying) AudioReactive.energy.value.coerceIn(0.04f, 1f) else 0.03f
-        view.scaleX = 1f + e * 0.024f
-        view.scaleY = 1f + e * 0.052f
-        view.translationY = -dp(3) * e
+        val ruby = Settings.theme.value == "Ruby"
+        view.scaleX = 1f + e * if (ruby) 0.030f else 0.024f
+        view.scaleY = 1f + e * if (ruby) 0.066f else 0.052f
+        view.translationY = -dp(if (ruby) 4 else 3) * e
         val alpha = (105 + e * 120).toInt().coerceIn(90, 225)
         view.setShadowLayer(dp(6).toFloat() + dp(8).toFloat() * e, 0f, 0f, Color.argb(alpha, Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent)))
         if (view.width > 0) {
@@ -483,6 +516,7 @@ class FloatingLyricsService : Service() {
     private data class OverlayColors(val accent: Int, val main: Int, val muted: Int)
 
     private fun themeColors(name: String): OverlayColors = when (name) {
+        "Ruby" -> OverlayColors(0xFFFF4357.toInt(), 0xFFFFE4E7.toInt(), 0xFFF3A4AE.toInt())
         "Violet" -> OverlayColors(0xFFAA9BFF.toInt(), 0xFFE2DDFF.toInt(), 0xFFC5BDF0.toInt())
         "Ocean" -> OverlayColors(0xFF55CBFF.toInt(), 0xFFD8F3FF.toInt(), 0xFF9EDCF2.toInt())
         "Rose" -> OverlayColors(0xFFFF77A4.toInt(), 0xFFFFD7E4.toInt(), 0xFFFFAFC8.toInt())

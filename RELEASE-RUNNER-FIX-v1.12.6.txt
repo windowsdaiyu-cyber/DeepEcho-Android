@@ -1,0 +1,14 @@
+DEEP-ECHO Mobile v1.12.6 release-runner clone fix
+
+Problem:
+Windows PowerShell 5.x with ErrorActionPreference=Stop can treat normal native stderr
+from `git clone` (including the harmless "Cloning into..." progress line) as a terminating
+NativeCommandError when stderr is redirected for capture.
+
+Fix:
+Invoke-Captured temporarily uses ErrorActionPreference=Continue while executing native
+commands, captures stdout/stderr, and determines success/failure from LASTEXITCODE.
+The script-wide strict error behavior is restored immediately afterwards.
+
+No Android app source, APK code, lyrics logic, playback logic, versionName/versionCode,
+or signing configuration was changed by this runner fix.

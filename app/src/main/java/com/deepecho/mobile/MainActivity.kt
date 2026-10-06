@@ -22,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -37,7 +36,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,6 +54,9 @@ import com.deepecho.mobile.ui.MiniPlayer
 import com.deepecho.mobile.ui.PlayerScreen
 import com.deepecho.mobile.ui.SearchScreen
 import com.deepecho.mobile.ui.SettingsScreen
+import com.deepecho.mobile.ui.UiEvents
+import com.deepecho.mobile.ui.UiAction
+import com.deepecho.mobile.ui.SearchVm
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -81,6 +82,12 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         AppUpdater.onAppResumed(this)
     }
+
+    override fun onStop() {
+        // Save song/timestamp/theme only. A fresh app launch intentionally opens Home.
+        PlayerClient.persistSongSession(force = true)
+        super.onStop()
+    }
 }
 
 @Composable
@@ -91,20 +98,35 @@ fun App() {
     DeepEchoTheme(theme) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
+            color = if (theme == "Ruby") Color.Transparent else MaterialTheme.colorScheme.background,
             contentColor = MaterialTheme.colorScheme.onBackground
         ) {
-            var tab by rememberSaveable { mutableIntStateOf(0) }
+            var tab by remember { mutableIntStateOf(0) }
             var showPlayer by remember { mutableStateOf(false) }
+            var showSettings by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
                 Bus.messages.collect { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show() }
+            }
+            LaunchedEffect(Unit) {
+                UiEvents.actions.collect { action ->
+                    when (action) {
+                        is UiAction.Search -> {
+                            showSettings = false
+                            showPlayer = false
+                            tab = 1
+                            SearchVm.run(action.query)
+                        }
+                        is UiAction.OpenPlayer -> showPlayer = true
+                    }
+                }
             }
             LaunchedEffect(Unit) {
                 delay(1200)
                 AppUpdater.autoCheck(ctx)
             }
             BackHandler(enabled = showPlayer) { showPlayer = false }
+            BackHandler(enabled = showSettings && !showPlayer) { showSettings = false }
 
             Box(Modifier.fillMaxSize()) {
                 LiveThemeBackdrop(Modifier.fillMaxSize())
@@ -114,12 +136,15 @@ fun App() {
                     bottomBar = {
                         Column {
                             MiniPlayer { showPlayer = true }
-                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.surface.copy(
+                                    alpha = if (theme == "Ruby") 0.68f else 0.96f
+                                )
+                            ) {
                                 val items = listOf(
                                     "Home" to Icons.Filled.Home,
                                     "Search" to Icons.Filled.Search,
-                                    "Library" to Icons.Filled.LibraryMusic,
-                                    "Settings" to Icons.Filled.Settings
+                                    "Library" to Icons.Filled.LibraryMusic
                                 )
                                 items.forEachIndexed { i, (label, icon) ->
                                     NavigationBarItem(
@@ -134,11 +159,17 @@ fun App() {
                     }
                 ) { pad ->
                     Box(Modifier.padding(pad).fillMaxSize()) {
-                        when (tab) {
-                            0 -> HomeScreen(onOpenSearch = { tab = 1 })
-                            1 -> SearchScreen()
-                            2 -> LibraryScreen()
-                            else -> SettingsScreen()
+                        if (showSettings) {
+                            SettingsScreen(onBack = { showSettings = false })
+                        } else {
+                            when (tab) {
+                                0 -> HomeScreen(
+                                    onOpenSearch = { tab = 1 },
+                                    onOpenSettings = { showSettings = true }
+                                )
+                                1 -> SearchScreen()
+                                else -> LibraryScreen()
+                            }
                         }
                     }
                 }

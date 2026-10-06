@@ -7,11 +7,11 @@ exit /b
 
 :RUN
 setlocal EnableExtensions EnableDelayedExpansion
-title DEEP-ECHO Mobile v1.10.2 - FEATURE TEST BUILDER
+title DEEP-ECHO Mobile v1.12.6 - LYRICS READY SEARCH BUILDER
 cd /d "%~dp0"
 
 echo ==============================================
-echo   DEEP-ECHO Mobile v1.10.2 - FEATURE TEST BUILDER
+echo   DEEP-ECHO Mobile v1.12.6 - LYRICS READY SEARCH BUILDER
 echo   Java 17 locked - live Gradle output
 echo ==============================================
 echo.
@@ -20,7 +20,7 @@ set "BUILD_LOG=%~dp0deepecho-build.log"
 set "JAVA17="
 set "GRADLE_BAT="
 set "APK=app\build\outputs\apk\debug\app-debug.apk"
-set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.10.2-FEATURE-TEST.apk"
+set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.12.6-LYRICS-READY-SEARCH-TEST.apk"
 
 echo [0/6] Builder started successfully.
 echo Working folder:
@@ -171,7 +171,7 @@ echo.
 rem ------------------------------------------------------------
 rem 5. Build
 rem ------------------------------------------------------------
-echo [5/6] Building APK...
+echo [5/6] Running unit tests + building APK...
 echo.
 echo IMPORTANT:
 echo - Output ab isi terminal me LIVE dikhega.
@@ -183,7 +183,7 @@ if exist "%APK%" del /q "%APK%" >nul 2>&1
 if exist "%OUT_APK%" del /q "%OUT_APK%" >nul 2>&1
 if exist "%BUILD_LOG%" del /q "%BUILD_LOG%" >nul 2>&1
 
-call "%GRADLE_BAT%" --build-cache --parallel --console=plain :app:assembleDebug
+call "%GRADLE_BAT%" --build-cache --parallel --console=plain :app:testDebugUnitTest :app:assembleDebug
 set "RC=!ERRORLEVEL!"
 
 if not "!RC!"=="0" (
@@ -196,7 +196,7 @@ if not "!RC!"=="0" (
     echo This second Gradle pass is only for diagnostics and should be faster.
     echo.
 
-    call "%GRADLE_BAT%" --build-cache --parallel --console=plain :app:assembleDebug --stacktrace > "%BUILD_LOG%" 2>&1
+    call "%GRADLE_BAT%" --build-cache --parallel --console=plain :app:testDebugUnitTest :app:assembleDebug --stacktrace > "%BUILD_LOG%" 2>&1
 
     echo.
     echo -------- USEFUL ERRORS --------

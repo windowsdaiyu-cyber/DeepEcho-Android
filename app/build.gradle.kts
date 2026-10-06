@@ -16,8 +16,8 @@ android {
         applicationId = "com.deepecho.mobile"
         minSdk = 26
         targetSdk = 34
-        versionCode = 20
-        versionName = "1.10.2"
+        versionCode = 35
+        versionName = "1.12.6"
     }
 
     // Ek fixed keystore (build_apk.bat bana deta hai) taaki updates purani APK ke upar install ho sakein
@@ -55,7 +55,10 @@ android {
             "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi"
         )
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     packaging {
         resources {
             excludes += setOf(
@@ -84,7 +87,11 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-session:1.4.1")
     implementation("androidx.media3:media3-datasource:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    testImplementation("junit:junit:4.13.2")
 }

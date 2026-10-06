@@ -1,0 +1,26 @@
+DeepEcho Android v1.12.6 — Centered Live Lyrics + Fast Lyric Video Reader
+
+Changed/additive files:
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsMetadata.kt — release-gate fix: performer matching preserves meaningful one-character initials; title/sync logic unchanged
+- app/build.gradle.kts — versionCode 35 / versionName 1.12.6
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt — centered auto-follow and active glow; safe auto-start only after normal lyric failure
+- app/src/main/java/com/deepecho/mobile/ui/LyricsUiMath.kt [NEW] — presentation-only center geometry
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricVideoEligibility.kt — safe auto-start policy
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsLiveVideoReader.kt — authored captions trusted; auto-captions provisional; OCR can replace them
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsVideoOcrProcessor.kt — denser bounded live sampling for fast lyric videos
+- app/src/test/java/com/deepecho/mobile/lyrics/LiveVideoLyricsV126Test.kt [NEW]
+- app/src/test/java/com/deepecho/mobile/ui/LyricsUiMathV126Test.kt [NEW]
+- build_apk.bat / BUILD-TEST-APK-v1.12.6.bat
+- README.md / TEST-NOTES-v1.12.6.md / TEST-REPORT-v1.12.6.md
+
+Protected and intentionally unchanged:
+- LyricsOrchestrator normal engine
+- LyricsVideoRecovery Exact Lyrics / Retry orchestration
+- CaptionResolver / LyricsAlignmentEngine / LyricsRuntimeSync
+- LrclibProvider and existing cache/provider ordering
+- PlaybackService / PlayerClient
+- YouTubeApi playback/search implementation
+- Downloads / YtDownloader
+- Queue / Smart Autoplay / TasteEngine
+- FloatingLyricsService
+- theme/visualizer engines

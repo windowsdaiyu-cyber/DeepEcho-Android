@@ -15,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.player.PlayerClient
 import kotlin.math.PI
@@ -59,6 +61,22 @@ fun LiveThemeBackdrop(modifier: Modifier = Modifier) {
     val energy = if (playing) 1f else 0.54f
 
     Canvas(modifier.fillMaxSize()) {
+        if (theme == "Ruby") {
+            // Ruby owns the whole visual field: deep black-red base with cinematic glow.
+            drawRect(Color(0xFF070204))
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x66FF2038),
+                        Color(0x281B050A),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.72f, size.height * 0.28f),
+                    radius = size.maxDimension * 0.78f
+                )
+            )
+        }
+
         // Quiet full-screen colour atmosphere instead of visible giant circles.
         drawRect(
             brush = Brush.linearGradient(
@@ -73,6 +91,60 @@ fun LiveThemeBackdrop(modifier: Modifier = Modifier) {
         )
 
         when (theme) {
+            "Ruby" -> {
+                // Signature RUBY look: flowing neon-red ribbons + dense ember field.
+                // The ribbons are thin/translucent so foreground text stays readable.
+                repeat(5) { lane ->
+                    val path = Path()
+                    val laneOffset = (lane - 2.5f) * size.height * 0.018f
+                    for (i in 0..34) {
+                        val t = i / 34f
+                        val x = size.width * (t * 1.12f - 0.08f)
+                        val waveA = sin((t * 7.2f + phase * (0.34f + lane * 0.015f)).toDouble()).toFloat()
+                        val waveB = sin((t * 15.5f - phase * 0.22f + lane).toDouble()).toFloat()
+                        val y = size.height * (0.56f - t * 0.22f) +
+                            waveA * size.height * 0.075f +
+                            waveB * size.height * 0.018f + laneOffset
+                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(
+                        path = path,
+                        color = accent.copy(alpha = (0.10f + lane * 0.010f) * energy),
+                        style = Stroke(width = 1.0f + lane * 0.22f, cap = StrokeCap.Round)
+                    )
+                }
+
+                val rubyParticleCount = if (playing) 92 else 68
+                repeat(rubyParticleCount) { i ->
+                    val x0 = ((i * 47) % 149) / 148f
+                    val y0 = ((i * 89) % 151) / 150f
+                    val speed = 0.09f + (i % 9) * 0.018f
+                    val travel = (y0 + phase / (2f * PI.toFloat()) * speed) % 1f
+                    val driftX = sin((phase * (0.24f + (i % 5) * 0.025f) + i * 0.71f).toDouble()).toFloat()
+                    val x = x0 * size.width + driftX * (7f + (i % 4) * 2.2f)
+                    val y = (1f - travel) * size.height
+                    val twinkle = abs(sin((phase * 0.75f + i * 0.41f).toDouble())).toFloat()
+                    val core = 0.75f + (i % 5) * 0.48f
+                    if (i % 9 == 0) {
+                        drawCircle(accent.copy(alpha = (0.030f + twinkle * 0.045f) * energy), core * 4.2f, Offset(x, y))
+                    }
+                    drawCircle(
+                        Color(0xFFFF675F).copy(alpha = (0.16f + twinkle * 0.42f) * shimmer * energy),
+                        core,
+                        Offset(x, y)
+                    )
+                    if (playing && i % 17 == 0) {
+                        drawLine(
+                            Color(0xFFFFB0A8).copy(alpha = 0.16f * shimmer),
+                            Offset(x - 8f, y + 3f),
+                            Offset(x + 8f, y - 3f),
+                            1.15f,
+                            StrokeCap.Round
+                        )
+                    }
+                }
+            }
+
             "Ocean" -> {
                 // Fine current lines + bubbles; intentionally low opacity for readable text.
                 for (row in 0 until 5) {
@@ -191,11 +263,16 @@ fun LiveThemeBackdrop(modifier: Modifier = Modifier) {
 
         // Readability guard: a tiny neutral veil keeps bright particle clusters from competing
         // with foreground text/buttons, while the animation remains clearly visible.
-        drawRect(Color.Black.copy(alpha = if (theme == "AMOLED") 0.03f else 0.050f))
+        drawRect(Color.Black.copy(alpha = when (theme) {
+            "AMOLED" -> 0.03f
+            "Ruby" -> 0.035f
+            else -> 0.050f
+        }))
     }
 }
 
 fun accentFor(theme: String): Color = when (theme) {
+    "Ruby" -> Color(0xFFFF4357)
     "Violet" -> Color(0xFF9D8CFF)
     "Ocean" -> Color(0xFF4FC3F7)
     "Rose" -> Color(0xFFFF6B9A)

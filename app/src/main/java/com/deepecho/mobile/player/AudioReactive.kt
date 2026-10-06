@@ -23,11 +23,14 @@ import kotlin.math.sqrt
 object AudioReactive {
     val bands = MutableStateFlow(List(16) { 0.08f })
     val energy = MutableStateFlow(0.08f)
+    /** Lightweight vocal-band likelihood for lyrics timing only; never changes playback. */
+    val vocalLikelihood = MutableStateFlow(0f)
     val realCapture = MutableStateFlow(false)
 
     private var visualizer: Visualizer? = null
     private var sessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var smooth = FloatArray(16) { 0.08f }
+    private var vocalSmooth = 0f
 
     @Synchronized
     fun attachIfPermitted(context: Context): Boolean {
@@ -74,6 +77,18 @@ object AudioReactive {
                     val avg = next.average().toFloat()
                     val peak = next.maxOrNull() ?: 0f
                     energy.value = (avg * 0.55f + peak * 0.45f).coerceIn(0.03f, 1f)
+
+                    // A deliberately conservative vocal-band heuristic. Singing/rap speech energy
+                    // is often concentrated through the mid bands while pure sub-bass/very-high
+                    // percussion dominates elsewhere. This is only used as a runtime timing guard
+                    // when real Visualizer capture is available; it is never treated as ASR.
+                    val bass = next.take(4).average().toFloat()
+                    val mids = next.drop(4).take(8).average().toFloat()
+                    val highs = next.drop(12).average().toFloat()
+                    val rawVocal = ((mids * 1.65f) - (bass * 0.42f) - (highs * 0.18f) + peak * 0.08f)
+                        .coerceIn(0f, 1f)
+                    vocalSmooth = vocalSmooth * 0.78f + rawVocal * 0.22f
+                    vocalLikelihood.value = vocalSmooth.coerceIn(0f, 1f)
                     realCapture.value = true
                 }
             }, (Visualizer.getMaxCaptureRate() / 2).coerceAtLeast(1000), false, true)
@@ -100,6 +115,8 @@ object AudioReactive {
         }
         bands.value = out
         energy.value = if (playing) ((out.average().toFloat() * 0.85f) + 0.08f).coerceIn(0.08f, 0.74f) else 0.06f
+        // Synthetic fallback must never masquerade as vocal detection.
+        vocalLikelihood.value = 0f
     }
 
     @Synchronized
@@ -109,5 +126,7 @@ object AudioReactive {
         visualizer = null
         sessionId = C.AUDIO_SESSION_ID_UNSET
         realCapture.value = false
+        vocalLikelihood.value = 0f
+        vocalSmooth = 0f
     }
 }

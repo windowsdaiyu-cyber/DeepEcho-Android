@@ -48,7 +48,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.deepecho.mobile.data.Song
+import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Store
 import com.deepecho.mobile.net.Downloads
 import com.deepecho.mobile.player.PlayerClient
@@ -58,17 +60,43 @@ fun fmtTime(ms: Long): String {
     return "%d:%02d".format(s / 60, s % 60)
 }
 
+private fun upgradedArtworkUrl(url: String): String? {
+    val match = Regex("""https?://(?:i|img)\.ytimg\.com/(?:vi|vi_webp)/([^/]+)/[^?]+""")
+        .find(url) ?: return null
+    val id = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
+    return "https://i.ytimg.com/vi/$id/maxresdefault.jpg"
+}
+
 @Composable
 fun Art(url: String?, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(10.dp)) {
+    val dataSaver by Settings.dataSaverMode.collectAsState()
     Box(
         modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
         if (url != null) {
-            AsyncImage(
-                model = url, contentDescription = null,
-                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
-            )
+            val upgraded = remember(url, dataSaver) { if (dataSaver) null else upgradedArtworkUrl(url) }
+            if (upgraded != null && upgraded != url) {
+                SubcomposeAsyncImage(
+                    model = upgraded,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    error = {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                )
+            } else {
+                AsyncImage(
+                    model = url, contentDescription = null,
+                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                )
+            }
         } else {
             Icon(Icons.Filled.MusicNote, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -118,25 +146,9 @@ fun SongRow(
         }
         Box {
             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Play next") }, onClick = { menu = false; PlayerClient.playNext(song) })
-                DropdownMenuItem(text = { Text("Add to queue") }, onClick = { menu = false; PlayerClient.addToQueue(song) })
-                DropdownMenuItem(
-                    text = { Text(if (isLiked) "Unlike" else "Like") },
-                    onClick = { menu = false; Store.toggleLike(song) }
-                )
-                DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { menu = false; addDialog = true })
-                if (downloaded) {
-                    DropdownMenuItem(text = { Text("Remove download") }, onClick = { menu = false; Store.removeDownload(song.url) })
-                } else {
-                    DropdownMenuItem(text = { Text("Download") }, onClick = { menu = false; Downloads.start(song) })
-                }
-                if (extraLabel != null && onExtra != null) {
-                    DropdownMenuItem(text = { Text(extraLabel) }, onClick = { menu = false; onExtra() })
-                }
-            }
         }
     }
+    if (menu) SongActionsSheet(song, onDismiss = { menu = false }, extraLabel = extraLabel, onExtra = onExtra)
     if (addDialog) AddToPlaylistDialog(song) { addDialog = false }
 }
 
@@ -207,7 +219,7 @@ fun SongList(
         item {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { PlayerClient.playSongs(songs, 0) }) { Text("Play all") }
-                OutlinedButton(onClick = { PlayerClient.playSongs(songs.shuffled(), 0) }) { Text("Shuffle") }
+                OutlinedButton(onClick = { PlayerClient.playShuffledCollection(songs) }) { Text("Shuffle") }
             }
         }
         itemsIndexed(songs, key = { i, s -> "${s.url}#$i" }) { i, s ->

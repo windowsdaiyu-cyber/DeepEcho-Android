@@ -55,6 +55,10 @@ fun ListeningStatsScreen() {
     val last7 = remember(daily, today) {
         (0L..6L).sumOf { days -> daily[today.minusDays(days).toString()] ?: 0L }
     }
+    val last30 = remember(daily, today) {
+        (0L..29L).sumOf { days -> daily[today.minusDays(days).toString()] ?: 0L }
+    }
+    val repeatFavorite = remember(stats) { stats.maxByOrNull { it.playCount } }
     val topSongs = remember(stats) {
         stats.sortedWith(compareByDescending<ListeningStat> { it.listenedMs }.thenByDescending { it.playCount }).take(10)
     }
@@ -78,8 +82,8 @@ fun ListeningStatsScreen() {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatCard("Today", statDuration(todayMs), Modifier.weight(1f))
-                StatCard("7 days", statDuration(last7), Modifier.weight(1f))
-                StatCard("All time", statDuration(totalMs), Modifier.weight(1f))
+                StatCard("Your Week", statDuration(last7), Modifier.weight(1f))
+                StatCard("Your Month", statDuration(last30), Modifier.weight(1f))
             }
         }
 
@@ -90,6 +94,21 @@ fun ListeningStatsScreen() {
             ) {
                 StatCard("Plays", totalPlays.toString(), Modifier.weight(1f))
                 StatCard("Tracked songs", stats.size.toString(), Modifier.weight(1f))
+            }
+        }
+        if (repeatFavorite != null) {
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable { PlayerClient.playDiscovery(repeatFavorite.song) }
+                        .padding(14.dp)
+                ) {
+                    Text("Repeat favorite", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(repeatFavorite.song.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${repeatFavorite.song.artist} • ${repeatFavorite.playCount} plays", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
 

@@ -1,0 +1,38 @@
+DeepEcho Android v1.12.5 — Live Lyric Video Reader
+
+Changed/additive files:
+- app/build.gradle.kts
+  - versionCode 34 / versionName 1.12.5
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricVideoEligibility.kt [NEW]
+  - strict lyric/lyrical-video-only gate; rejects karaoke/covers/reactions/instrumentals/local files
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsLiveVideoReader.kt [NEW]
+  - user-started Read lyrics from video controller
+  - captions-first path; live OCR only when current lyric video has no captions
+  - per-track cancellation + single worker + stale-track protection
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsVideoOcrProcessor.kt
+  - additive extractLive() progressive OCR mode
+  - current-position + next-line look-ahead sampling; unchanged-frame skip; no whole-video pre-scan
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+  - Read lyrics from video switch appears only for strict lyric-video candidates
+  - normal lyrics remain visible until live video lyrics are actually ready
+  - live reader receives player position about every 450 ms for near-realtime prioritization
+- app/src/test/java/com/deepecho/mobile/lyrics/LiveVideoLyricsV125Test.kt [NEW]
+- build_apk.bat
+- BUILD-TEST-APK-v1.12.5.bat [NEW]
+- TEST-NOTES-v1.12.5.md [NEW]
+- TEST-REPORT-v1.12.5.md [NEW]
+
+Intentionally NOT modified:
+- LyricsOrchestrator normal provider/recovery logic
+- LyricsVideoRecovery Exact Lyrics / Retry orchestration
+- CaptionResolver / LyricsAlignmentEngine / LyricsRuntimeSync
+- PlaybackService / PlayerClient
+- YouTubeApi streaming/search implementation
+- Downloads / YtDownloader
+- Queue / Smart Autoplay / TasteEngine
+- Home / Search data flows
+- Local playback
+- AppUpdater / media session
+- FloatingLyricsService
+- Ambient/video playback implementation
+- visualizer/theme engines

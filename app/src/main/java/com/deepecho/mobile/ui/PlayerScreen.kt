@@ -1,6 +1,8 @@
 package com.deepecho.mobile.ui
 
 import android.Manifest
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +38,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,12 +49,14 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Shuffle
@@ -66,6 +72,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,6 +81,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -90,6 +98,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -98,22 +108,43 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Song
 import com.deepecho.mobile.data.Store
 import com.deepecho.mobile.data.ThemeAdvisor
 import com.deepecho.mobile.data.TopArtist
+import com.deepecho.mobile.lyrics.LyricsRuntimeSync
+import com.deepecho.mobile.lyrics.LyricsProgress
+import com.deepecho.mobile.lyrics.LyricVideoEligibility
+import com.deepecho.mobile.lyrics.LyricsLiveVideoReader
+import com.deepecho.mobile.net.Bus
 import com.deepecho.mobile.net.Downloads
 import com.deepecho.mobile.net.Lrclib
 import com.deepecho.mobile.net.Lyrics
 import com.deepecho.mobile.net.LyricLine
+import com.deepecho.mobile.net.Net
+import com.deepecho.mobile.net.ResolvedVideo
+import com.deepecho.mobile.net.YouTubeApi
 import com.deepecho.mobile.overlay.FloatingLyricsController
 import com.deepecho.mobile.player.AudioReactive
 import com.deepecho.mobile.player.PlayerClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 @Composable
 private fun ReactiveSeekSlider(
@@ -221,6 +252,29 @@ private fun ThemeActionBurst(
         val cy = size.height / 2f
         val travel = size.minDimension * (0.12f + 0.34f * p)
         when (theme) {
+            "Ruby" -> {
+                repeat(13) { i ->
+                    val a = (i / 13f) * (Math.PI * 2.0) + p * 1.6f
+                    val localTravel = travel * (0.78f + (i % 4) * 0.10f)
+                    val x = cx + kotlin.math.cos(a).toFloat() * localTravel
+                    val y = cy + kotlin.math.sin(a).toFloat() * localTravel
+                    val r = 1.9f + (i % 4) * 0.75f
+                    drawCircle(Color(0xFFFF5A58).copy(alpha = alpha * 0.94f), r, Offset(x, y))
+                    if (i % 3 == 0) {
+                        drawLine(
+                            Color(0xFFFFC1B8).copy(alpha = alpha * 0.76f),
+                            Offset(x - 5f, y + 2f), Offset(x + 5f, y - 2f),
+                            1.6f, StrokeCap.Round
+                        )
+                    }
+                }
+                drawCircle(
+                    Color(0xFFFF3347).copy(alpha = alpha * 0.42f),
+                    radius = size.minDimension * (0.10f + p * 0.28f),
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2.2f)
+                )
+            }
             "Rose" -> {
                 repeat(7) { i ->
                     val a = (i / 7f) * (Math.PI * 2.0) - Math.PI / 2.0
@@ -316,6 +370,7 @@ private fun ThemeActionBurst(
 
 @Composable
 fun MiniPlayer(onClick: () -> Unit) {
+    val theme by Settings.theme.collectAsState()
     val song = PlayerClient.currentSong ?: return
     val dur = (if (PlayerClient.durationMs > 0) PlayerClient.durationMs else song.durationSec * 1000).coerceAtLeast(1)
     var dragging by remember(song.url) { mutableStateOf(false) }
@@ -326,7 +381,11 @@ fun MiniPlayer(onClick: () -> Unit) {
     var swipeY by remember(song.url) { mutableFloatStateOf(0f) }
     Column(
         Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(
+                MaterialTheme.colorScheme.surface.copy(
+                    alpha = if (theme == "Ruby") 0.72f else 1f
+                )
+            )
             .pointerInput(song.url) {
                 detectDragGestures(
                     onDragStart = { swipeX = 0f; swipeY = 0f },
@@ -445,6 +504,36 @@ private fun AmbientPlayerBackdrop(modifier: Modifier = Modifier) {
         )
 
         when (theme) {
+            "Ruby" -> {
+                repeat(4) { lane ->
+                    val path = Path()
+                    for (i in 0..24) {
+                        val t = i / 24f
+                        val x = size.width * t
+                        val wave = kotlin.math.sin((t * 7.4f + drift * 0.48f + lane * 0.9f).toDouble()).toFloat()
+                        val y = size.height * (0.52f - t * 0.18f) + wave * size.height * (0.034f + lane * 0.005f)
+                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(
+                        path,
+                        accent.copy(alpha = (0.10f + lane * 0.018f) * pulse * energy),
+                        style = Stroke(width = 1.2f + lane * 0.25f, cap = StrokeCap.Round)
+                    )
+                }
+                repeat(54) { i ->
+                    val x0 = ((i * 43) % 113) / 112f
+                    val y0 = ((i * 79) % 127) / 126f
+                    val travel = (y0 + drift / (2f * Math.PI.toFloat()) * (0.10f + (i % 7) * 0.018f)) % 1f
+                    val x = x0 * size.width + kotlin.math.sin(drift * 0.4f + i * 0.73f) * 7f
+                    val y = (1f - travel) * size.height
+                    val twinkle = kotlin.math.abs(kotlin.math.sin(drift * 0.72f + i * 0.39f))
+                    drawCircle(
+                        Color(0xFFFF625C).copy(alpha = (0.10f + twinkle * 0.28f) * energy),
+                        1f + (i % 4) * 0.62f,
+                        Offset(x, y)
+                    )
+                }
+            }
             "Ocean" -> {
                 for (row in 0 until 3) {
                     var prev: Offset? = null
@@ -528,9 +617,686 @@ private fun AmbientPlayerBackdrop(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun AmbientLyricsPane(song: Song, modifier: Modifier = Modifier) {
+    val romanized by Settings.romanizedLyrics.collectAsState()
+    val wordByWord by Settings.wordByWordLyrics.collectAsState()
+    val theme by Settings.theme.collectAsState()
+    val energy by AudioReactive.energy.collectAsState()
+    val realCapture by AudioReactive.realCapture.collectAsState()
+    val vocalLikelihood by AudioReactive.vocalLikelihood.collectAsState()
+    val progressMap by LyricsProgress.states.collectAsState()
+    val state by produceState<LyricsState>(initialValue = LyricsState.Loading, song.url) {
+        value = LyricsState.Loading
+        val fetched = withContext(Dispatchers.IO) { Lrclib.fetch(song) }
+        value = if (fetched == null) LyricsState.None else LyricsState.Ok(fetched)
+    }
+    val active = lyricsActiveFor(theme, true)
+    val main = lyricsMainFor(theme, true)
+    val muted = lyricsMutedFor(theme, true)
+    val savedOffset = remember(song.url) { Settings.getInt("lyrics_offset_${song.videoId}", 0).toLong() }
+    val rawPosition = (PlayerClient.positionMs + savedOffset).coerceAtLeast(0L)
+    val currentLyrics = (state as? LyricsState.Ok)?.lyrics
+    val position = currentLyrics?.let {
+        LyricsRuntimeSync.effectivePosition(song.url, rawPosition, it, realCapture, vocalLikelihood)
+    } ?: rawPosition
+    val duration = PlayerClient.durationMs.coerceAtLeast((song.durationSec * 1000L).coerceAtLeast(1L))
+    val waitingForVocal = position < 0L
+    val bounce = if (waitingForVocal) 1f else (1f + (energy * 0.052f)).coerceAtMost(1.06f)
+
+    fun display(text: String): String {
+        if (text.isBlank()) return text
+        return if (romanized) Romanizer.romanize(text) ?: text else text
+    }
+
+    BoxWithConstraints(modifier) {
+        val compact = maxWidth < 215.dp
+        val spacious = maxWidth > 360.dp
+        val currentSize = when { spacious -> 34.sp; compact -> 20.sp; else -> 27.sp }
+        val nextSize = when { spacious -> 22.sp; compact -> 14.sp; else -> 18.sp }
+        val currentLineHeight = when { spacious -> 42.sp; compact -> 25.sp; else -> 33.sp }
+        val nextLineHeight = when { spacious -> 29.sp; compact -> 19.sp; else -> 24.sp }
+
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.Start
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AutoAwesome, null, tint = active, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "LIVE LYRICS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = active,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+
+            when (val currentState = state) {
+                LyricsState.Loading -> {
+                    Text(
+                        progressMap[song.url] ?: "Lyrics load ho rahe hain…",
+                        color = muted,
+                        fontSize = nextSize,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                LyricsState.None -> {
+                    Text(
+                        "Is gaane ke lyrics nahi mile",
+                        color = muted,
+                        fontSize = nextSize,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                is LyricsState.Ok -> {
+                    val lyrics = currentState.lyrics
+                    val synced = lyrics.synced
+                    val plainLines = lyrics.plain.orEmpty().lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
+
+                    val rawCurrent: String
+                    val rawNext: String
+                    val rawAfter: String
+                    var currentLine: LyricLine? = null
+                    var currentLineEnd = 0L
+
+                    if (synced.isNotEmpty()) {
+                        val idx = if (position < 0L) -1 else synced.indexOfLast { it.timeMs <= position }
+                        currentLine = synced.getOrNull(idx)
+                        rawCurrent = currentLine?.text ?: synced.firstOrNull()?.text.orEmpty()
+                        rawNext = if (idx < 0) synced.getOrNull(1)?.text.orEmpty() else synced.getOrNull(idx + 1)?.text.orEmpty()
+                        rawAfter = if (idx < 0) synced.getOrNull(2)?.text.orEmpty() else synced.getOrNull(idx + 2)?.text.orEmpty()
+                        currentLineEnd = if (idx >= 0) {
+                            synced.getOrNull(idx + 1)?.timeMs
+                                ?: ((currentLine?.timeMs ?: rawPosition) + estimatedLineDurationMs(rawCurrent))
+                        } else 0L
+                    } else if (plainLines.isNotEmpty()) {
+                        val fraction = ((if (position < 0L) 0L else position).toFloat() / duration.toFloat()).coerceIn(0f, 0.999f)
+                        val idx = (fraction * plainLines.size).toInt().coerceIn(0, plainLines.lastIndex)
+                        rawCurrent = plainLines[idx]
+                        rawNext = plainLines.getOrNull(idx + 1).orEmpty()
+                        rawAfter = plainLines.getOrNull(idx + 2).orEmpty()
+                    } else {
+                        rawCurrent = "Lyrics will appear here"
+                        rawNext = ""
+                        rawAfter = ""
+                    }
+
+                    val currentDisplay = display(rawCurrent)
+                    val activeWord = currentLine?.let { line ->
+                        val trustworthyWordTiming = line.words.isNotEmpty() ||
+                            (lyrics.verified && lyrics.alignmentConfidence >= 60)
+                        if (wordByWord && trustworthyWordTiming) activeWordIndex(
+                            line = line,
+                            displayText = currentDisplay,
+                            endMs = currentLineEnd,
+                            positionMs = position,
+                            allowExactWordTiming = !romanized
+                        ) else -1
+                    } ?: -1
+                    val currentVisual = if (activeWord >= 0) {
+                        wordGlowText(
+                            currentDisplay, activeWord, active, main.copy(alpha = 0.58f), 1f + energy
+                        )
+                    } else {
+                        AnnotatedString(currentDisplay)
+                    }
+
+                    Text(
+                        currentVisual,
+                        color = if (waitingForVocal) muted.copy(alpha = 0.78f) else main,
+                        fontSize = currentSize,
+                        lineHeight = currentLineHeight,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = if (compact) 4 else 5,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = bounce
+                            scaleY = bounce
+                        },
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            shadow = if (waitingForVocal) Shadow(muted.copy(alpha = 0.24f), blurRadius = 7f)
+                            else Shadow(active.copy(alpha = 0.62f), blurRadius = 18f)
+                        )
+                    )
+                    if (rawNext.isNotBlank()) {
+                        Text(
+                            display(rawNext),
+                            color = muted.copy(alpha = 0.86f),
+                            fontSize = nextSize,
+                            lineHeight = nextLineHeight,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 14.dp),
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                shadow = Shadow(active.copy(alpha = 0.27f), blurRadius = 10f)
+                            )
+                        )
+                    }
+                    if (rawAfter.isNotBlank() && !compact) {
+                        Text(
+                            display(rawAfter),
+                            color = muted.copy(alpha = 0.52f),
+                            fontSize = 14.sp,
+                            lineHeight = 19.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 9.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncedSongVideo(
+    video: ResolvedVideo,
+    modifier: Modifier = Modifier,
+    onPlaybackError: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val exo = remember(video.url) {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(Net.UA)
+            .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Referer" to "https://www.youtube.com/",
+                    "Origin" to "https://www.youtube.com"
+                )
+            )
+        val videoLoadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                10_000,
+                35_000,
+                1_200,
+                2_000
+            )
+            .build()
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+            .setLoadControl(videoLoadControl)
+            .build().apply {
+                volume = 0f
+                repeatMode = Player.REPEAT_MODE_OFF
+                setMediaItem(MediaItem.fromUri(video.url))
+                prepare()
+                seekTo(PlayerClient.positionMs.coerceAtLeast(0L))
+                playWhenReady = PlayerClient.isPlaying
+            }
+    }
+
+    val currentErrorHandler by rememberUpdatedState(onPlaybackError)
+    DisposableEffect(exo) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                currentErrorHandler()
+            }
+        }
+        exo.addListener(listener)
+        onDispose {
+            exo.removeListener(listener)
+            exo.release()
+        }
+    }
+
+    // DeepEcho audio remains the master clock. Avoid frequent hard seeks because they flush
+    // the video decoder/buffer and cause visible micro-stutter on phones. Small/medium drift is
+    // corrected with tiny playback-speed changes; only large drift uses a hard seek.
+    LaunchedEffect(exo, video.url) {
+        var lastHardSeekAt = 0L
+        while (isActive) {
+            val target = PlayerClient.positionMs.coerceAtLeast(0L)
+            val driftMs = target - exo.currentPosition
+            val masterPlaying = PlayerClient.isPlaying
+
+            exo.volume = 0f
+
+            if (!masterPlaying) {
+                if (exo.isPlaying) exo.pause()
+                if (abs(driftMs) > 1_200L && exo.playbackState != Player.STATE_BUFFERING) {
+                    exo.seekTo(target)
+                }
+                exo.setPlaybackSpeed(1f)
+            } else {
+                if (exo.playbackState == Player.STATE_READY && !exo.isPlaying) exo.play()
+
+                val now = android.os.SystemClock.elapsedRealtime()
+                when {
+                    abs(driftMs) > 4_000L &&
+                        exo.playbackState != Player.STATE_BUFFERING &&
+                        now - lastHardSeekAt > 1_800L -> {
+                        exo.seekTo(target)
+                        exo.setPlaybackSpeed(1f)
+                        lastHardSeekAt = now
+                    }
+                    driftMs > 900L -> exo.setPlaybackSpeed(1.03f)
+                    driftMs < -900L -> exo.setPlaybackSpeed(0.97f)
+                    driftMs > 350L -> exo.setPlaybackSpeed(1.015f)
+                    driftMs < -350L -> exo.setPlaybackSpeed(0.985f)
+                    else -> exo.setPlaybackSpeed(1f)
+                }
+            }
+            delay(800)
+        }
+    }
+
+    AndroidView(
+        modifier = modifier.clip(RoundedCornerShape(18.dp)),
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                useController = false
+                player = exo
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                setShutterBackgroundColor(android.graphics.Color.BLACK)
+                keepScreenOn = false
+            }
+        },
+        update = { view ->
+            if (view.player !== exo) view.player = exo
+        }
+    )
+}
+
+@Composable
+private fun AmbientMediaStage(
+    song: Song,
+    videoEnabled: Boolean,
+    onToggleVideo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val theme by Settings.theme.collectAsState()
+    var retryNonce by remember(song.url) { mutableIntStateOf(0) }
+
+    val videoLookup by produceState<Result<ResolvedVideo>?>(
+        initialValue = null,
+        song.url,
+        videoEnabled,
+        retryNonce
+    ) {
+        if (!videoEnabled) {
+            value = null
+            return@produceState
+        }
+        // Clear the previous resolved stream first. This is important on retry: YouTube can
+        // return the same logical candidate with a refreshed signed URL, and Compose must tear
+        // down the failed ExoPlayer before the new attempt is installed.
+        value = null
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                // Prefer a real music-video result, but rank it by duration closeness to the
+                // audio that is already playing. This avoids picking a lyric/live/remix upload
+                // whose timeline can never stay in sync with the master song clock.
+                val candidates = linkedMapOf<String, Song>()
+                val queries = listOf(
+                    "${song.title} ${song.artist} official music video",
+                    "${song.title} ${song.artist} official video",
+                    "${song.title} ${song.artist}"
+                )
+                for (query in queries) {
+                    YouTubeApi.searchVideos(query).take(5).forEach { candidate ->
+                        if (candidate.url != song.url) candidates.putIfAbsent(candidate.url, candidate)
+                    }
+                    if (candidates.size >= 9) break
+                }
+
+                val targetDuration = song.durationSec.coerceAtLeast(0L)
+                val rankedVideoCandidates = candidates.values.sortedWith(
+                    compareBy<Song> { candidate ->
+                        if (targetDuration <= 0L || candidate.durationSec <= 0L) Long.MAX_VALUE / 4
+                        else kotlin.math.abs(candidate.durationSec - targetDuration)
+                    }.thenBy { candidate ->
+                        // Prefer official-looking uploads when two candidates have similar timing.
+                        val text = (candidate.title + " " + candidate.artist).lowercase()
+                        when {
+                            "official music video" in text -> 0
+                            "official video" in text -> 1
+                            "official" in text -> 2
+                            else -> 3
+                        }
+                    }
+                )
+
+                // First try timeline-compatible music-video results. The currently playing URL is
+                // a final fallback because YouTube Music song items often contain only static art.
+                val close = if (targetDuration > 0L) {
+                    rankedVideoCandidates.filter { candidate ->
+                        candidate.durationSec > 0L && kotlin.math.abs(candidate.durationSec - targetDuration) <= 12L
+                    }
+                } else rankedVideoCandidates
+                val ordered = (close + rankedVideoCandidates + song).distinctBy { it.url }
+
+                var lastError: Throwable? = null
+                for (candidate in ordered) {
+                    try {
+                        return@runCatching YouTubeApi.resolveVideo(
+                            candidate.url,
+                            forceFresh = retryNonce > 0
+                        )
+                    } catch (t: Throwable) {
+                        lastError = t
+                    }
+                }
+                throw (lastError ?: IllegalStateException("Video stream unavailable"))
+            }
+        }
+    }
+
+    BoxWithConstraints(modifier) {
+        val compact = maxWidth < 430.dp
+        val shortViewport = maxHeight < 360.dp
+        val gap = if (compact) 10.dp else 16.dp
+        val leftFraction = if (compact) 0.43f else 0.46f
+        // Real phones in landscape are much shorter than the emulator window. The old
+        // square used the available WIDTH only, so the artwork consumed the full height
+        // and pushed the Play/Retry control below the visible viewport. Reserve a fixed
+        // control budget first, then size the square from the smaller width/height budget.
+        val estimatedLeftWidth = ((maxWidth - gap) * leftFraction).coerceAtLeast(80.dp)
+        val controlReserve = if (shortViewport) 84.dp else 96.dp
+        val artHeightBudget = (maxHeight - 16.dp - controlReserve).coerceAtLeast(64.dp)
+        val artSize = minOf(estimatedLeftWidth, artHeightBudget)
+        val videoButtonSize = when {
+            shortViewport -> 42.dp
+            compact -> 44.dp
+            else -> 50.dp
+        }
+        val videoIconSize = when {
+            shortViewport -> 22.dp
+            compact -> 24.dp
+            else -> 28.dp
+        }
+
+        Row(
+            Modifier.fillMaxSize().padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                Modifier.weight(leftFraction),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    Modifier.size(artSize),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val result = videoLookup
+                    when {
+                        videoEnabled && result?.isSuccess == true -> {
+                            SyncedSongVideo(
+                                video = result.getOrThrow(),
+                                modifier = Modifier.fillMaxSize(),
+                                onPlaybackError = { retryNonce += 1 }
+                            )
+                        }
+                        videoEnabled && result?.isFailure == true -> {
+                            Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(20.dp))
+                            Box(
+                                Modifier.fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.42f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "Video unavailable\nTap below to retry",
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                        videoEnabled -> {
+                            Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(20.dp))
+                            CircularProgressIndicator(Modifier.size(34.dp), strokeWidth = 3.dp)
+                        }
+                        else -> Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(20.dp))
+                    }
+                }
+
+                val videoFailed = videoEnabled && videoLookup?.isFailure == true
+                FilledIconButton(
+                    onClick = {
+                        if (videoFailed) retryNonce += 1 else onToggleVideo()
+                    },
+                    modifier = Modifier.padding(top = if (shortViewport) 6.dp else 10.dp).size(videoButtonSize),
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        when {
+                            videoFailed -> Icons.Filled.Refresh
+                            videoEnabled -> Icons.Filled.Pause
+                            else -> Icons.Filled.PlayArrow
+                        },
+                        when {
+                            videoFailed -> "Retry synced video"
+                            videoEnabled -> "Show cover"
+                            else -> "Play synced video"
+                        },
+                        modifier = Modifier.size(videoIconSize)
+                    )
+                }
+                Text(
+                    when {
+                        videoEnabled && videoLookup == null -> "Finding video…"
+                        videoEnabled && videoLookup?.isSuccess == true -> "Video synced to song"
+                        videoEnabled -> "Retry video"
+                        else -> "Play video"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accentFor(theme),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = if (shortViewport) 2.dp else 4.dp)
+                )
+            }
+
+            AmbientLyricsPane(
+                song,
+                Modifier.weight(if (compact) 0.57f else 0.54f).fillMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+private fun AmbientImmersiveWindow(enabled: Boolean) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val keepScreenOn by Settings.keepScreenOnExpanded.collectAsState()
+
+    DisposableEffect(enabled, keepScreenOn, view) {
+        val activity = context as? Activity
+        if (activity == null) return@DisposableEffect onDispose { }
+        val previousOrientation = activity.requestedOrientation
+        val controller = WindowInsetsControllerCompat(activity.window, view)
+
+        if (enabled) {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        if (enabled || keepScreenOn) {
+            activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
+        onDispose {
+            if (enabled) {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+                activity.requestedOrientation = previousOrientation
+            }
+            activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+}
+
+@Composable
+private fun AmbientFullscreenPlayer(
+    song: Song,
+    onExitAmbient: () -> Unit,
+    onClosePlayer: () -> Unit
+) {
+    var videoEnabled by remember(song.url) { mutableStateOf(false) }
+    val theme by Settings.theme.collectAsState()
+    val dataSaver by Settings.dataSaverMode.collectAsState()
+    AmbientImmersiveWindow(true)
+
+    LaunchedEffect(dataSaver) {
+        if (dataSaver) videoEnabled = false
+    }
+
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        AmbientPlayerBackdrop(Modifier.fillMaxSize())
+        AmbientMediaStage(
+            song = song,
+            videoEnabled = videoEnabled,
+            onToggleVideo = {
+                if (dataSaver) Bus.toast("Data Saver Mode mein Ambient video off hai")
+                else videoEnabled = !videoEnabled
+            },
+            modifier = Modifier.fillMaxSize().padding(start = 42.dp, end = 42.dp, top = 22.dp, bottom = 70.dp)
+        )
+
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClosePlayer) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Close player", tint = accentFor(theme))
+            }
+            Spacer(Modifier.weight(1f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AutoAwesome, null, tint = accentFor(theme), modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Ambient", color = accentFor(theme), fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
+                Switch(checked = true, onCheckedChange = { enabled -> if (!enabled) onExitAmbient() })
+            }
+        }
+
+        // Full Ambient transport controls. Keep the five primary actions available without
+        // leaving Ambient and scale them down on short/narrow phone landscapes so nothing clips.
+        BoxWithConstraints(
+            Modifier.align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            val veryCompact = maxWidth < 540.dp || maxHeight < 300.dp
+            val compact = veryCompact || maxWidth < 700.dp || maxHeight < 380.dp
+            val sideButton = when {
+                veryCompact -> 34.dp
+                compact -> 38.dp
+                else -> 42.dp
+            }
+            val sideIcon = when {
+                veryCompact -> 21.dp
+                compact -> 23.dp
+                else -> 25.dp
+            }
+            val playButton = when {
+                veryCompact -> 42.dp
+                compact -> 46.dp
+                else -> 52.dp
+            }
+            val playIcon = when {
+                veryCompact -> 27.dp
+                compact -> 30.dp
+                else -> 34.dp
+            }
+            val gap = if (veryCompact) 1.dp else 4.dp
+
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(
+                    Modifier.weight(1f).padding(bottom = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        song.title,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!veryCompact) {
+                        Text(
+                            song.artist,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(gap)
+                ) {
+                    IconButton(
+                        onClick = { PlayerClient.prev() },
+                        modifier = Modifier.size(sideButton)
+                    ) {
+                        Icon(Icons.Filled.SkipPrevious, "Previous song", Modifier.size(sideIcon), tint = accentFor(theme))
+                    }
+                    IconButton(
+                        onClick = { PlayerClient.seekBy(-10_000) },
+                        modifier = Modifier.size(sideButton)
+                    ) {
+                        Icon(Icons.Filled.Replay10, "Back 10 seconds", Modifier.size(sideIcon), tint = accentFor(theme))
+                    }
+                    FilledIconButton(
+                        onClick = { PlayerClient.toggle() },
+                        modifier = Modifier.size(playButton),
+                        shape = CircleShape
+                    ) {
+                        if (PlayerClient.buffering) {
+                            CircularProgressIndicator(
+                                Modifier.size(if (compact) 22.dp else 26.dp),
+                                strokeWidth = 2.5.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Icon(
+                                if (PlayerClient.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                "Play/Pause",
+                                Modifier.size(playIcon)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { PlayerClient.seekBy(10_000) },
+                        modifier = Modifier.size(sideButton)
+                    ) {
+                        Icon(Icons.Filled.Forward10, "Forward 10 seconds", Modifier.size(sideIcon), tint = accentFor(theme))
+                    }
+                    IconButton(
+                        onClick = { PlayerClient.next() },
+                        modifier = Modifier.size(sideButton)
+                    ) {
+                        Icon(Icons.Filled.SkipNext, "Next song", Modifier.size(sideIcon), tint = accentFor(theme))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun PlayerScreen(onClose: () -> Unit) {
     val song = PlayerClient.currentSong
-    var showLyrics by remember { mutableStateOf(false) }
+    var showLyrics by remember(song?.url) { mutableStateOf(UiEvents.consumeLyricsRequest()) }
     val liked by Store.liked.collectAsState()
     val downloads by Store.downloads.collectAsState()
     val progress by Downloads.progress.collectAsState()
@@ -541,10 +1307,19 @@ fun PlayerScreen(onClose: () -> Unit) {
     var lyricsNeedsSync by remember(song?.url) { mutableStateOf(false) }
     var lyricsSyncRequest by remember(song?.url) { mutableIntStateOf(0) }
     val autoThemeWithSong by Settings.autoThemeWithSong.collectAsState()
-    val ambientMode by Settings.ambientMode.collectAsState()
+    // Ambient is intentionally session-scoped in the player. A persisted ON value must not
+    // reopen the player in forced landscape when the app/player is opened later. The user
+    // explicitly opts in each time from the Ambient switch. Keep Settings in sync while this
+    // screen is alive because AmbientPlayerBackdrop and existing settings surfaces observe it.
+    var ambientMode by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        Settings.setAmbientMode(false)
+    }
     val theme by Settings.theme.collectAsState()
     var likeBurst by remember(song?.url) { mutableIntStateOf(0) }
     var downloadBurst by remember(song?.url) { mutableIntStateOf(0) }
+    var ambientVideo by remember(song?.url) { mutableStateOf(false) }
+    var showSongActions by remember(song?.url) { mutableStateOf(false) }
     val suggestedTheme = PlayerClient.currentSuggestedTheme ?: remember(song?.url) { song?.let(ThemeAdvisor::suggest) }
     val queueRevision = PlayerClient.queueRevision
     val queueCount = remember(queueRevision) {
@@ -555,16 +1330,35 @@ fun PlayerScreen(onClose: () -> Unit) {
     val posShown = if (dragging) dragValue.toLong() else PlayerClient.positionMs
 
     if (showQueue) UpNextDialog(onDismiss = { showQueue = false })
+    if (showSongActions && song != null) SongActionsSheet(song, onDismiss = { showSongActions = false })
 
     if (showArtist != null) {
         ArtistScreen(
             artist = showArtist!!,
             onBack = { showArtist = null },
-            onOpenArtist = { showArtist = it }
+            onOpenArtist = { showArtist = it },
+            fullScreenOverlay = true
         )
         return
     }
 
+    if (ambientMode && song != null) {
+        AmbientFullscreenPlayer(
+            song = song,
+            onExitAmbient = {
+                ambientMode = false
+                Settings.setAmbientMode(false)
+            },
+            onClosePlayer = {
+                ambientMode = false
+                Settings.setAmbientMode(false)
+                onClose()
+            }
+        )
+        return
+    }
+
+    AmbientImmersiveWindow(false)
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AmbientPlayerBackdrop(Modifier.fillMaxSize())
         Column(
@@ -579,9 +1373,55 @@ fun PlayerScreen(onClose: () -> Unit) {
             TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Artwork" else "Lyrics") }
         }
 
+        // Phone-safe Ambient control: the older layout exposed Ambient only in the
+        // artwork-only action row. On real phones that made the control disappear as
+        // soon as Lyrics was open even though larger emulator layouts looked fine.
+        // Keep this small row outside the lyrics viewport so it is always reachable
+        // while viewing lyrics. This changes UI only; playback/lyrics timing is untouched.
+        if (showLyrics) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 38.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                Icon(
+                    Icons.Filled.AutoAwesome,
+                    "Ambient Mode",
+                    tint = if (ambientMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    "Ambient",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (ambientMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(4.dp))
+                Switch(
+                    checked = ambientMode,
+                    onCheckedChange = { enabled ->
+                        ambientMode = enabled
+                        Settings.setAmbientMode(enabled)
+                        if (!enabled) ambientVideo = false
+                    },
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = 0.72f
+                        scaleY = 0.72f
+                    }
+                )
+            }
+        }
+
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             if (song == null) {
                 Text("Kuch play nahi ho raha", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (ambientMode && !showLyrics) {
+                AmbientMediaStage(
+                    song = song,
+                    videoEnabled = ambientVideo,
+                    onToggleVideo = { ambientVideo = !ambientVideo },
+                    modifier = Modifier.fillMaxSize()
+                )
             } else if (showLyrics) {
                 LyricsView(
                     song = song,
@@ -594,8 +1434,11 @@ fun PlayerScreen(onClose: () -> Unit) {
         }
 
         if (song != null) {
-            Spacer(Modifier.size(if (showLyrics) 5.dp else 16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.size(if (showLyrics) 5.dp else if (ambientMode) 8.dp else 14.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         song.title,
@@ -612,23 +1455,10 @@ fun PlayerScreen(onClose: () -> Unit) {
                         style = if (showLyrics) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (!showLyrics) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { showLyrics = true }) { Text("Lyrics") }
-                            TextButton(
-                                onClick = {
-                                    if (song.artist.isNotBlank()) {
-                                        showArtist = TopArtist(song.artist, song.thumb, 0)
-                                    }
-                                }
-                            ) {
-                                Text("About Artist")
-                            }
-                        }
-                    }
                 }
+
                 val isLiked = liked.any { it.url == song.url }
-                Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(50.dp), contentAlignment = Alignment.Center) {
                     ThemeActionBurst(likeBurst, theme, "like", Modifier.fillMaxSize())
                     IconButton(onClick = {
                         Store.toggleLike(song)
@@ -641,9 +1471,10 @@ fun PlayerScreen(onClose: () -> Unit) {
                         )
                     }
                 }
+
                 val downloaded = downloads.any { it.song.url == song.url }
                 val p = progress[song.url]
-                Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(50.dp), contentAlignment = Alignment.Center) {
                     ThemeActionBurst(downloadBurst, theme, "download", Modifier.fillMaxSize())
                     when {
                         p != null -> CircularProgressIndicator(progress = { p }, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -654,6 +1485,61 @@ fun PlayerScreen(onClose: () -> Unit) {
                             downloadBurst += 1
                             Downloads.start(song)
                         }) { Icon(Icons.Filled.Download, "Download") }
+                    }
+                }
+                IconButton(onClick = { showSongActions = true }) {
+                    Icon(Icons.Filled.MoreVert, "More")
+                }
+            }
+
+            if (!showLyrics) {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 46.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    TextButton(
+                        onClick = { showLyrics = true },
+                        modifier = Modifier.weight(0.72f)
+                    ) {
+                        Text("Lyrics", maxLines = 1)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            if (song.artist.isNotBlank()) {
+                                showArtist = TopArtist(song.artist, song.thumb, 0)
+                            }
+                        },
+                        modifier = Modifier.weight(1.15f)
+                    ) {
+                        Text("About Artist", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+
+                    Row(
+                        Modifier.weight(0.92f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            "Ambient Mode",
+                            tint = if (ambientMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Switch(
+                            checked = ambientMode,
+                            onCheckedChange = { enabled ->
+                                ambientMode = enabled
+                                Settings.setAmbientMode(enabled)
+                                if (!enabled) ambientVideo = false
+                            },
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = 0.78f
+                                scaleY = 0.78f
+                            }
+                        )
                     }
                 }
             }
@@ -785,14 +1671,6 @@ fun PlayerScreen(onClose: () -> Unit) {
                         else MaterialTheme.colorScheme.primary
                     )
                 }
-                IconButton(onClick = { Settings.setAmbientMode(!ambientMode) }) {
-                    Icon(
-                        Icons.Filled.AutoAwesome,
-                        if (ambientMode) "Ambient mode on" else "Ambient mode off",
-                        tint = if (ambientMode) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
         } else {
             Spacer(Modifier.height(3.dp))
@@ -892,26 +1770,32 @@ private fun wordGlowText(
 }
 
 @Composable
-private fun LyricsSwitch(
+private fun CompactLyricsToggle(
     label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     textColor: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Box(
+        modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (checked) textColor.copy(alpha = 0.18f)
+                else textColor.copy(alpha = 0.07f)
+            )
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 9.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
+            if (checked) "$label •" else label,
+            style = MaterialTheme.typography.labelSmall,
             color = textColor,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = if (checked) FontWeight.Bold else FontWeight.SemiBold,
+            maxLines = 1
         )
-        Spacer(Modifier.width(6.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -921,12 +1805,49 @@ fun LyricsView(
     syncRequest: Int = 0,
     onSyncNeededChange: (Boolean) -> Unit = {}
 ) {
-    val state by produceState<LyricsState>(LyricsState.Loading, song.url) {
+    var repairNonce by remember(song.url) { mutableIntStateOf(0) }
+    val progressMap by LyricsProgress.states.collectAsState()
+    val liveVideoStates by LyricsLiveVideoReader.states.collectAsState()
+    var readVideoLyrics by remember(song.url) { mutableStateOf(false) }
+    var liveReaderAutoStarted by remember(song.url) { mutableStateOf(false) }
+    val lyricVideoEligible = remember(song.url, song.title) { LyricVideoEligibility.isEligible(song) }
+    val state by produceState<LyricsState>(LyricsState.Loading, song.url, repairNonce) {
         value = LyricsState.Loading
-        val l = withContext(Dispatchers.IO) { Lrclib.fetch(song) }
+        val l = withContext(Dispatchers.IO) {
+            if (repairNonce > 0) Lrclib.fetchExactRecovery(song) else Lrclib.fetch(song)
+        }
         value = if (l == null) LyricsState.None else LyricsState.Ok(l)
     }
-    var offsetMs by remember(song.url) { mutableLongStateOf(0L) }
+    LaunchedEffect(song.url, lyricVideoEligible, state) {
+        // Only strict lyric videos auto-start, and only after the normal lyrics engine fails.
+        // Once the user turns it off manually we do not keep forcing it back on.
+        if (!liveReaderAutoStarted && state is LyricsState.None &&
+            LyricVideoEligibility.shouldAutoStart(song, normalLyricsAvailable = false)
+        ) {
+            liveReaderAutoStarted = true
+            readVideoLyrics = true
+        }
+    }
+    DisposableEffect(song.url) {
+        onDispose {
+            Lrclib.cancelExactRecovery(song.url)
+            LyricsLiveVideoReader.stop(song.url)
+        }
+    }
+    LaunchedEffect(readVideoLyrics, song.url) {
+        if (readVideoLyrics && lyricVideoEligible) {
+            LyricsLiveVideoReader.start(song, PlayerClient.positionMs)
+            while (isActive && readVideoLyrics) {
+                LyricsLiveVideoReader.updatePosition(song.url, PlayerClient.positionMs)
+                delay(450L)
+            }
+        } else {
+            LyricsLiveVideoReader.stop(song.url)
+        }
+    }
+    var offsetMs by remember(song.url) {
+        mutableLongStateOf(Settings.getInt("lyrics_offset_${song.videoId}", 0).toLong())
+    }
     val context = LocalContext.current
     val overlayEnabled by FloatingLyricsController.enabled.collectAsState()
     val liveTheme by Settings.liveTheme.collectAsState()
@@ -937,6 +1858,8 @@ fun LyricsView(
     val mainColor = lyricsMainFor(theme, liveTheme)
     val mutedColor = lyricsMutedFor(theme, liveTheme)
     val reactiveEnergy by AudioReactive.energy.collectAsState()
+    val realCapture by AudioReactive.realCapture.collectAsState()
+    val vocalLikelihood by AudioReactive.vocalLikelihood.collectAsState()
     val lyricGlowTransition = rememberInfiniteTransition(label = "lyrics_glow")
     val lyricGlow by lyricGlowTransition.animateFloat(
         initialValue = 0.62f,
@@ -969,15 +1892,30 @@ fun LyricsView(
         onSyncNeededChange(false)
     }
 
+    val onFloatingLyricsToggle: (Boolean) -> Unit = { wantOn ->
+        if (!wantOn) {
+            FloatingLyricsController.stop(context)
+        } else if (FloatingLyricsController.canDraw(context)) {
+            FloatingLyricsController.start(context)
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                AudioReactive.attachIfPermitted(context)
+            } else {
+                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        } else {
+            overlayLauncher.launch(FloatingLyricsController.permissionIntent(context))
+        }
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp || maxWidth < 360.dp
-        val lyricFont = if (compact) 18.sp else 22.sp
-        val activeLyricFont = if (compact) 21.sp else 25.sp
-        val lyricLineHeight = if (compact) 24.sp else 31.sp
+        val lyricFont = if (compact) 17.sp else 21.sp
+        val activeLyricFont = if (compact) 23.sp else 28.sp
+        val lyricLineHeight = if (compact) 28.sp else 36.sp
 
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 34.dp),
+                Modifier.fillMaxWidth().heightIn(min = 26.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -987,66 +1925,87 @@ fun LyricsView(
                     color = activeColor,
                     fontWeight = FontWeight.Bold
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Floating lyrics",
-                        color = activeColor,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Switch(
-                        checked = overlayEnabled,
-                        onCheckedChange = { wantOn ->
-                            if (!wantOn) {
-                                FloatingLyricsController.stop(context)
-                            } else if (FloatingLyricsController.canDraw(context)) {
-                                FloatingLyricsController.start(context)
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    AudioReactive.attachIfPermitted(context)
-                                } else {
-                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            } else {
-                                overlayLauncher.launch(FloatingLyricsController.permissionIntent(context))
-                            }
-                        }
+            }
+
+            // Keep all optional lyrics tools in one compact, horizontally scrollable strip.
+            // This frees vertical space for actual lyric lines on real phone displays.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(34.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CompactLyricsToggle(
+                    "Floating",
+                    overlayEnabled,
+                    onFloatingLyricsToggle,
+                    activeColor
+                )
+                CompactLyricsToggle(
+                    "Word",
+                    wordByWord,
+                    Settings::setWordByWordLyrics,
+                    mainColor
+                )
+                CompactLyricsToggle(
+                    "Romanized",
+                    romanized,
+                    Settings::setRomanizedLyrics,
+                    mainColor
+                )
+                if (lyricVideoEligible) {
+                    CompactLyricsToggle(
+                        "Video",
+                        readVideoLyrics,
+                        { readVideoLyrics = it },
+                        mainColor
                     )
                 }
             }
 
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 38.dp).padding(bottom = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LyricsSwitch(
-                    "Word by Word",
-                    wordByWord,
-                    Settings::setWordByWordLyrics,
-                    mainColor,
-                    Modifier.weight(1f)
-                )
-                LyricsSwitch(
-                    "Romanized",
-                    romanized,
-                    Settings::setRomanizedLyrics,
-                    mainColor,
-                    Modifier.weight(1f)
-                )
+            if (lyricVideoEligible && readVideoLyrics) {
+                val live = liveVideoStates[song.url]
+                if (live != null && live.status.isNotBlank()) {
+                    Text(
+                        live.status,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (live.failed) mutedColor else activeColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().padding(top = 1.dp, bottom = 1.dp)
+                    )
+                }
             }
 
-            when (val s = state) {
-                LyricsState.Loading -> Box(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) { CircularProgressIndicator() }
+            val liveLyrics = if (readVideoLyrics && lyricVideoEligible) liveVideoStates[song.url]?.lyrics else null
+            val displayState: LyricsState = if (liveLyrics != null) LyricsState.Ok(liveLyrics) else state
 
-                LyricsState.None -> Box(
+            when (val s = displayState) {
+                LyricsState.Loading -> Column(
                     Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Is gaane ke lyrics nahi mile", color = mutedColor)
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        progressMap[song.url] ?: "Checking lyrics…",
+                        color = mutedColor,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                LyricsState.None -> Column(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Could not verify lyrics for this version.", color = mutedColor, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { repairNonce += 1 }) { Text("Exact Lyrics / Retry") }
                 }
 
                 is LyricsState.Ok -> {
@@ -1078,17 +2037,38 @@ fun LyricsView(
                             )
                         }
                     } else {
-                        val pos = PlayerClient.positionMs + offsetMs
-                        val idx = lines.indexOfLast { it.timeMs <= pos }
+                        val rawPos = (PlayerClient.positionMs + offsetMs).coerceAtLeast(0L)
+                        val pos = LyricsRuntimeSync.effectivePosition(
+                            song.url, rawPos, s.lyrics, realCapture, vocalLikelihood
+                        )
+                        val idx = if (pos < 0L) -1 else lines.indexOfLast { it.timeMs <= pos }
                         val listState = rememberLazyListState()
                         var autoFollow by remember(song.url) { mutableStateOf(true) }
                         var programmaticScroll by remember(song.url) { mutableStateOf(false) }
+
+                        suspend fun centerActiveLyric(index: Int) {
+                            if (index < 0) return
+                            // First make the active row visible, then move its actual measured center
+                            // to the viewport center. This changes presentation only, never timestamps.
+                            listState.animateScrollToItem(index)
+                            val info = listState.layoutInfo
+                            val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+                            val delta = LyricsUiMath.centerScrollDelta(
+                                viewportStart = info.viewportStartOffset,
+                                viewportEnd = info.viewportEndOffset,
+                                itemOffset = item.offset,
+                                itemSize = item.size
+                            )
+                            if (kotlin.math.abs(delta) > 2) {
+                                listState.animateScrollBy(delta.toFloat())
+                            }
+                        }
 
                         LaunchedEffect(idx, autoFollow) {
                             if (idx >= 0 && autoFollow) {
                                 programmaticScroll = true
                                 try {
-                                    listState.animateScrollToItem((idx - 2).coerceAtLeast(0))
+                                    centerActiveLyric(idx)
                                 } finally {
                                     programmaticScroll = false
                                 }
@@ -1113,7 +2093,7 @@ fun LyricsView(
                                 if (idx >= 0) {
                                     programmaticScroll = true
                                     try {
-                                        listState.animateScrollToItem((idx - 2).coerceAtLeast(0))
+                                        centerActiveLyric(idx)
                                     } finally {
                                         programmaticScroll = false
                                     }
@@ -1121,13 +2101,69 @@ fun LyricsView(
                             }
                         }
 
+                        Column(Modifier.fillMaxWidth().padding(bottom = 1.dp)) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(30.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = { repairNonce += 1 },
+                                    modifier = Modifier.height(30.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 0.dp)
+                                ) { Text("Exact", style = MaterialTheme.typography.labelSmall) }
+                                TextButton(
+                                    onClick = { repairNonce += 1 },
+                                    modifier = Modifier.height(30.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 0.dp)
+                                ) { Text("Repair", style = MaterialTheme.typography.labelSmall) }
+                                TextButton(
+                                    onClick = {
+                                        repairNonce += 1
+                                        autoFollow = true
+                                        onSyncNeededChange(false)
+                                    },
+                                    modifier = Modifier.height(30.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 0.dp)
+                                ) { Text("Sync", style = MaterialTheme.typography.labelSmall) }
+                                TextButton(
+                                    onClick = {
+                                        repairNonce += 1
+                                        autoFollow = true
+                                        onSyncNeededChange(false)
+                                    },
+                                    modifier = Modifier.height(30.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 0.dp)
+                                ) { Text("Re-align", style = MaterialTheme.typography.labelSmall) }
+                                TextButton(
+                                    onClick = { repairNonce += 1 },
+                                    modifier = Modifier.height(30.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 0.dp)
+                                ) { Text("Missing", style = MaterialTheme.typography.labelSmall) }
+                            }
+                            val progress = progressMap[song.url]
+                            if (!progress.isNullOrBlank()) {
+                                Text(
+                                    progress,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = mutedColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+
                         Row(
-                            Modifier.fillMaxWidth().heightIn(min = 32.dp),
+                            Modifier.fillMaxWidth().heightIn(min = 28.dp),
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                if (s.lyrics.estimatedSync) "Smart sync • estimated" else "${s.lyrics.source} • ${s.lyrics.confidence}% match",
+                                if (pos < 0L) "Instrumental • waiting for vocals" else s.lyrics.displayLabel(),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (s.lyrics.estimatedSync) mutedColor else activeColor,
                                 modifier = Modifier.weight(1f)
@@ -1137,7 +2173,10 @@ fun LyricsView(
                                 "−0.5s",
                                 color = activeColor,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { offsetMs -= 500 }.padding(horizontal = 7.dp, vertical = 5.dp)
+                                modifier = Modifier.clickable {
+                                    offsetMs = (offsetMs - 500).coerceIn(-15_000L, 15_000L)
+                                    Settings.putInt("lyrics_offset_${song.videoId}", offsetMs.toInt())
+                                }.padding(horizontal = 7.dp, vertical = 5.dp)
                             )
                             Text(
                                 "%+.1fs".format(offsetMs / 1000f),
@@ -1148,19 +2187,27 @@ fun LyricsView(
                                 "+0.5s",
                                 color = activeColor,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { offsetMs += 500 }.padding(horizontal = 7.dp, vertical = 5.dp)
+                                modifier = Modifier.clickable {
+                                    offsetMs = (offsetMs + 500).coerceIn(-15_000L, 15_000L)
+                                    Settings.putInt("lyrics_offset_${song.videoId}", offsetMs.toInt())
+                                }.padding(horizontal = 7.dp, vertical = 5.dp)
                             )
                         }
 
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.weight(1f).fillMaxWidth().heightIn(min = 150.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                top = 3.dp,
-                                bottom = 14.dp
-                            )
+                        BoxWithConstraints(
+                            modifier = Modifier.weight(1f).fillMaxWidth().heightIn(min = 150.dp)
                         ) {
-                            itemsIndexed(lines) { i, l ->
+                            val centerPad = ((maxHeight / 2) - if (compact) 30.dp else 38.dp)
+                                .coerceAtLeast(24.dp)
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    top = centerPad,
+                                    bottom = centerPad
+                                )
+                            ) {
+                                itemsIndexed(lines) { i, l ->
                                 val isActive = i == idx
                                 val displayText = if (romanized) {
                                     Romanizer.romanize(l.text) ?: l.text
@@ -1169,7 +2216,9 @@ fun LyricsView(
                                 }
                                 val endMs = lines.getOrNull(i + 1)?.timeMs
                                     ?: (l.timeMs + estimatedLineDurationMs(displayText))
-                                val wordIndex = if (isActive && wordByWord) {
+                                val trustworthyWordTiming = l.words.isNotEmpty() ||
+                                    (s.lyrics.verified && s.lyrics.alignmentConfidence >= 60)
+                                val wordIndex = if (isActive && wordByWord && trustworthyWordTiming) {
                                     activeWordIndex(
                                         line = l,
                                         displayText = displayText,
@@ -1200,20 +2249,22 @@ fun LyricsView(
                                             PlayerClient.seekTo(l.timeMs - offsetMs)
                                         }
                                         .padding(
-                                            vertical = if (compact) 4.dp else 6.dp,
-                                            horizontal = 3.dp
+                                            vertical = if (isActive) { if (compact) 6.dp else 8.dp } else { if (compact) 3.dp else 4.dp },
+                                            horizontal = 6.dp
                                         )
                                         .graphicsLayer {
                                             if (isActive) {
                                                 val e = reactiveEnergy.coerceIn(0f, 1f)
-                                                scaleX = 1f + e * 0.018f
-                                                scaleY = 1f + e * 0.045f
-                                                translationY = -e * 3.2f
+                                                scaleX = 1.018f + e * 0.020f
+                                                scaleY = 1.018f + e * 0.050f
+                                                translationY = -e * 2.4f
                                             }
                                         }
                                 ) {
                                     Text(
                                         shownText,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center,
                                         fontSize = if (isActive) activeLyricFont else lyricFont,
                                         lineHeight = lyricLineHeight,
                                         fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.SemiBold,
@@ -1229,9 +2280,9 @@ fun LyricsView(
                                                         alpha = (0.66f + 0.20f * lyricGlow + 0.18f * reactiveEnergy).coerceIn(0f, 1f)
                                                     ),
                                                     blurRadius = if (wordByWord) {
-                                                        19f + 9f * lyricGlow + 8f * reactiveEnergy
+                                                        24f + 11f * lyricGlow + 9f * reactiveEnergy
                                                     } else {
-                                                        21f + 10f * lyricGlow + 9f * reactiveEnergy
+                                                        27f + 12f * lyricGlow + 10f * reactiveEnergy
                                                     }
                                                 )
                                                 liveTheme -> Shadow(
@@ -1244,6 +2295,7 @@ fun LyricsView(
                                     )
                                 }
                             }
+                        }
                         }
                     }
                 }

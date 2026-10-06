@@ -28,6 +28,14 @@ val Palettes = listOf(
         Color(0xFFD5BC82)
     ),
     Palette(
+        "Ruby",
+        Color(0xFFFF4357),
+        Color(0xFF080305),
+        Color(0xAA25080E),
+        Color(0xFFFFE5E8),
+        Color(0xFFF1A4AD)
+    ),
+    Palette(
         "Violet",
         Color(0xFF9D8CFF),
         Color(0xFF0E0C18),

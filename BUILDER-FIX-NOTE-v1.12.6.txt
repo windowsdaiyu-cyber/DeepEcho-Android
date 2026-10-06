@@ -1,0 +1,5 @@
+DeepEcho Android v1.12.6 builder-only fix
+
+App code/version/features are unchanged.
+The internal build_apk.bat was hardened for extracted folder names containing parentheses such as (2) or (3).
+Use BUILD-TEST-APK-v1.12.6.bat from inside this extracted source folder.
