@@ -1,41 +1,49 @@
-# DEEP-ECHO Mobile v1.12.7 — Instant Start + Rapid Skip Test Line
+# DEEP-ECHO Mobile v1.12.8 — Visible UX + Player Experience
 
-This v1.12.7 test source builds directly on the latest v1.12.6 Lyrics Ready Search + Multi-Provider Lyrics + Floating Lyrics Sync Fix line.
+This release is built directly on the successfully released v1.12.7 Instant Start + Rapid Skip baseline. The existing playback, lyrics, downloads, queue, Smart Autoplay, MediaSession and theme architecture are preserved and the v1.12.8 features are integrated on top.
 
-## What v1.12.7 adds
+## v1.12.8 highlights
 
-- First-UI-before-player-connect startup ordering.
-- Restored current track + bounded upcoming session lookahead without startup autoplay.
-- Current restored track pre-prepare while paused.
-- Candidate / WARM / READY future-track pipeline.
-- Default 7-track source lookahead (3 READY + 4 WARM on normal unmetered conditions).
-- Rapid-skip burst policy that keeps a larger future window where possible.
-- Continuous lookahead refill on media transitions and queue changes.
-- Existing YouTubeApi single-flight resolver/cache reused; no competing playback engine.
-- Manual Play/Next promotion to highest-priority source preparation.
-- Repeated Next avoids unconditional ExoPlayer re-prepare when the player is already prepared.
-- Stale speculative jobs cancelled/demoted when queue intent changes.
-- Data Saver / metered / memory-pressure / thermal-aware lookahead reduction.
-- Local/download/direct media recognized as already source-ready.
-- Optional lyrics prefetch and SmartCache moved out of the Play/Next critical path and delayed until playback is stable.
-- Debug-only startup / Play / Next latency markers.
-- Smart Autoplay async results revalidated before queue append.
-- Previous v1.12.6 Floating Lyrics synchronization fix remains included.
+- Dynamic Android lock-screen / media-session presentation.
+- Quick Settings tiles for Play/Pause, Open DeepEcho, Floating Lyrics and Smart Autoplay.
+- Home Mood Selector integrated as an additive recommendation context.
+- Personalized Daily Mixes / Your Mixes.
+- Five player presentation modes: Artwork, Lyrics, Visualizer, Ambient and Minimal.
+- Optional player gestures with protected seek/lyrics/system-gesture regions.
+- Theme-aware Android song share-card generator using the native share sheet.
+- Expanded per-song Quick Actions with More Like This / Less Like This.
+- Artwork-derived secondary player accents with cached palette extraction.
+- Optional synced current-lyric line in the mini player.
+- Listening Session cards using local listening data.
+- Optional line-level lyrics in the expanded media notification where Android permits.
+- Continue Your Vibe to restore a previous listening context without blindly replaying the old queue.
 
-## Protected systems
+## Protected v1.12.7 behavior
 
-The lyrics package, PlaybackService, YouTubeApi resolver, Downloads, FloatingLyricsService, PlayerScreen, Screens, and TasteEngine remain byte-identical to the latest v1.12.6 base except where explicitly listed in CHANGED-FILES.
+The v1.12.7 instant-start / rapid-skip line remains the performance baseline. Playback stays higher priority than artwork, lyrics presentation, Home decoration and recommendation refresh work. Existing lyrics retrieval/sync/OCR logic is not replaced by the new lyrics surfaces.
 
-## Build on Windows
+## Build/test on Windows
 
-Run:
+Run the root-level file:
 
-`BUILD-TEST-APK-v1.12.7.bat`
+`BUILD-TEST-APK-v1.12.8.bat`
 
-The builder runs all local unit tests first and then assembles the signed debug test APK using the existing permanent DeepEcho Android signing key.
+It uses the same permanent DeepEcho Android signing key path established by previous releases and produces:
 
-Expected APK:
+`DEEP-ECHO-Mobile-v1.12.8-VISIBLE-UX-PLAYER-TEST.apk`
 
-`DEEP-ECHO-Mobile-v1.12.7-INSTANT-START-RAPID-SKIP-TEST.apk`
+## One-click public release
 
-Do not release until cold-start, restored-session Play, 1/2/5/7 rapid Next, queue order, Smart Autoplay, Downloads/Local Music, lyrics sync, Floating Lyrics, notification/Bluetooth Next, and background playback have been tested on a real phone.
+After emulator/phone testing, run:
+
+`RELEASE-v1.12.8.bat`
+
+The release runner verifies the exact source manifest, checks that tag `v1.12.8` does not already exist, runs unit tests + a signed release build, verifies package/version/signing certificate, syncs the Android GitHub repository, pushes tag `v1.12.8`, and waits for the public GitHub Release APK + SHA256 assets.
+
+The runner never force-overwrites an existing tag and does not touch the PC/Windows DeepEcho repository.
+
+## Android package
+
+- Package: `com.deepecho.mobile`
+- Version name: `1.12.8`
+- Version code: `37`

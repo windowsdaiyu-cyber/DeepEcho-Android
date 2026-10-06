@@ -60,5 +60,39 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- v1.12.8 additive Quick Settings tiles; all reuse existing playback/app state. -->
+        <service
+            android:name=".quicktiles.PlayPauseTileService"
+            android:exported="true"
+            android:label="Play / Pause DeepEcho"
+            android:icon="@drawable/deepecho_logo"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service
+            android:name=".quicktiles.OpenDeepEchoTileService"
+            android:exported="true"
+            android:label="Open DeepEcho"
+            android:icon="@drawable/deepecho_logo"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service
+            android:name=".quicktiles.FloatingLyricsTileService"
+            android:exported="true"
+            android:label="Floating Lyrics"
+            android:icon="@drawable/deepecho_logo"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service
+            android:name=".quicktiles.SmartAutoplayTileService"
+            android:exported="true"
+            android:label="Smart Autoplay"
+            android:icon="@drawable/deepecho_logo"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
     </application>
 </manifest>

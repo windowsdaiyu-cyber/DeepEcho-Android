@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.deepecho.mobile.data.RingtoneMaker
+import com.deepecho.mobile.data.ExperienceV1128
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Song
 import com.deepecho.mobile.data.Store
@@ -101,6 +102,7 @@ fun SongActionsSheet(song: Song, onDismiss: () -> Unit, extraLabel: String? = nu
     var equalizer by remember { mutableStateOf(false) }
     var lyricsActions by remember { mutableStateOf(false) }
     var addPlaylist by remember { mutableStateOf(false) }
+    var shareCard by remember { mutableStateOf(false) }
     val isLiked = liked.any { it.url == song.url }
     val downloaded = downloads.any { it.song.url == song.url }
     val localFile = song.url.startsWith("content://") || song.url.startsWith("file://")
@@ -123,7 +125,17 @@ fun SongActionsSheet(song: Song, onDismiss: () -> Unit, extraLabel: String? = nu
             ActionRow(Icons.Filled.PlayArrow, "Play next") { PlayerClient.playNext(song); onDismiss() }
             ActionRow(Icons.Filled.QueueMusic, "Add to queue") { PlayerClient.addToQueue(song); onDismiss() }
             ActionRow(Icons.Filled.LibraryAdd, "Add to playlist") { addPlaylist = true }
-            ActionRow(Icons.Filled.Share, "Share") { actionScope.launch { shareSong(context, song) }; onDismiss() }
+            ActionRow(Icons.Filled.AutoAwesome, "More Like This") {
+                ExperienceV1128.markMoreLikeThis(song)
+                Bus.toast("More songs like this will be preferred")
+                onDismiss()
+            }
+            ActionRow(Icons.Filled.Block, "Less Like This") {
+                ExperienceV1128.markLessLikeThis(song)
+                Bus.toast("DeepEcho will lower similar recommendations")
+                onDismiss()
+            }
+            ActionRow(Icons.Filled.Share, "Share") { shareCard = true }
             ActionRow(Icons.Filled.Person, "View artist") { UiEvents.search(song.artist); onDismiss() }
             ActionRow(Icons.Filled.Album, "View album / related releases") { UiEvents.search("${song.artist} ${song.title} album"); onDismiss() }
             ActionRow(if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, if (isLiked) "Remove from library" else "Add to library") { Store.toggleLike(song) }
@@ -150,6 +162,7 @@ fun SongActionsSheet(song: Song, onDismiss: () -> Unit, extraLabel: String? = nu
     if (equalizer) QuickEqualizerDialog { equalizer = false }
     if (lyricsActions) LyricsExportDialog(song) { lyricsActions = false }
     if (addPlaylist) AddToPlaylistDialog(song) { addPlaylist = false }
+    if (shareCard) ShareCardDialogV1128(song) { shareCard = false; onDismiss() }
 }
 
 @Composable

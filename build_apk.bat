@@ -7,11 +7,11 @@ exit /b
 
 :RUN
 setlocal EnableExtensions EnableDelayedExpansion
-title DEEP-ECHO Mobile v1.12.7 - INSTANT START + RAPID SKIP BUILDER
+title DEEP-ECHO Mobile v1.12.8 - VISIBLE UX + PLAYER EXPERIENCE BUILDER
 cd /d "%~dp0"
 
 echo ==============================================
-echo   DEEP-ECHO Mobile v1.12.7 - INSTANT START + RAPID SKIP BUILDER
+echo   DEEP-ECHO Mobile v1.12.8 - VISIBLE UX + PLAYER EXPERIENCE BUILDER
 echo   Java 17 locked - live Gradle output
 echo ==============================================
 echo.
@@ -20,7 +20,7 @@ set "BUILD_LOG=%~dp0deepecho-build.log"
 set "JAVA17="
 set "GRADLE_BAT="
 set "APK=app\build\outputs\apk\debug\app-debug.apk"
-set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.12.7-INSTANT-START-RAPID-SKIP-TEST.apk"
+set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.12.8-VISIBLE-UX-PLAYER-TEST.apk"
 
 echo [0/6] Builder started successfully.
 echo Working folder:
@@ -197,6 +197,15 @@ if not "!RC!"=="0" (
     echo.
 
     call "%GRADLE_BAT%" --build-cache --parallel --console=plain :app:testDebugUnitTest :app:assembleDebug --stacktrace > "%BUILD_LOG%" 2>&1
+    set "DIAG_RC=!ERRORLEVEL!"
+
+    if "!DIAG_RC!"=="0" (
+        echo.
+        echo [OK] Diagnostic retry succeeded. Continuing with the APK produced by Gradle.
+        echo Full diagnostic log:
+        echo %BUILD_LOG%
+        goto CHECK_APK
+    )
 
     echo.
     echo -------- USEFUL ERRORS --------
@@ -208,6 +217,8 @@ if not "!RC!"=="0" (
     echo %BUILD_LOG%
     goto FAIL
 )
+
+:CHECK_APK
 
 rem ------------------------------------------------------------
 rem 6. APK output

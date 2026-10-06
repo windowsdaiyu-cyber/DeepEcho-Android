@@ -122,10 +122,10 @@ object TasteEngine {
         val taste = artists.joinToString(" ")
         val mood = when (label.lowercase()) {
             "feel good" -> "feel good happy uplifting songs"
-            "romance" -> "romantic love songs"
+            "romance", "romantic" -> "romantic love songs"
             "relax" -> "relax calm soothing chill songs"
-            "bad mood" -> "sad emotional heartbreak songs"
-            "energize" -> "energetic upbeat power songs"
+            "bad mood", "sad" -> "sad emotional heartbreak songs"
+            "energize", "energy" -> "energetic upbeat power songs"
             "party" -> "party dance hits"
             "workout" -> "workout gym high energy songs"
             "focus" -> "focus concentration soft music"
@@ -305,7 +305,12 @@ object TasteEngine {
 
         out += HomeMix("Trending now", "top trending songs India")
 
+        val moodContext = ExperienceV1128.activeMoodTerms()
         return out
+            .map { mix ->
+                if (moodContext.isBlank()) mix
+                else mix.copy(query = "${mix.query} $moodContext".trim())
+            }
             .filter { it.query.isNotBlank() }
             .distinctBy { it.query.lowercase() }
             .take(11)
@@ -394,6 +399,9 @@ object TasteEngine {
 
         val seedScript = scriptBucket(seed.title + " " + seed.artist)
         val seedMood = moodTokens(seed.title + " " + seed.artist)
+        val activeMoodTerms = ExperienceV1128.activeMoodTerms()
+        val activeMoodTokens = moodTokens(activeMoodTerms)
+        val feedback = ExperienceV1128.feedbackSnapshot()
         val seedTitleKey = titleKey(seed.title)
         val recentUrls = history.take(28).map { it.url }.toSet()
         val recentArtists = history.take(35).map { it.artist.lowercase() }.toSet()
@@ -404,6 +412,10 @@ object TasteEngine {
             add("${seed.title} ${seed.artist} radio")
             if (seedMood.isNotEmpty()) {
                 add("${seed.artist} ${seedMood.first()} songs")
+            }
+            if (activeMoodTerms.isNotBlank()) {
+                add("${seed.artist} $activeMoodTerms songs")
+                favoriteArtists.getOrNull(0)?.let { add("$it $activeMoodTerms mix") }
             }
             favoriteArtists.getOrNull(0)?.let { add("$it mix") }
             favoriteArtists.getOrNull(1)?.let { add("$it songs") }
@@ -443,6 +455,8 @@ object TasteEngine {
 
             if (candidateScript == seedScript) score += 140
             if (seedMood.isNotEmpty() && candidateMood.any { it in seedMood }) score += 150
+            if (activeMoodTokens.isNotEmpty() && candidateMood.any { it in activeMoodTokens }) score += 210
+            score += ExperienceV1128.affinityAdjustment(song, feedback)
 
             if (song.url in recentUrls) score -= 900
             if (candidateKey.isNotBlank() && candidateKey == seedTitleKey) score -= 1000

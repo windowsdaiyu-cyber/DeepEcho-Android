@@ -273,6 +273,7 @@ object PlayerClient {
                 MediaMetadata.Builder()
                     .setTitle(song.title)
                     .setArtist(song.artist)
+                    .setAlbumArtist(song.artist) // stable original artist for optional notification lyric composition
                     .setArtworkUri(song.thumb?.let { Uri.parse(it) })
                     .build()
             )

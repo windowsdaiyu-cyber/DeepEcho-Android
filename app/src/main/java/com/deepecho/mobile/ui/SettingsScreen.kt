@@ -60,6 +60,10 @@ fun SettingsScreen(onBack: (() -> Unit)? = null) {
     val ambientMode by Settings.ambientMode.collectAsState()
     val smartCache by Settings.smartCache.collectAsState()
     val autoUpdateCheck by Settings.autoUpdateCheck.collectAsState()
+    val playerGestures by Settings.playerGestures.collectAsState()
+    val miniPlayerLyrics by Settings.miniPlayerLyrics.collectAsState()
+    val notificationLyrics by Settings.notificationLyrics.collectAsState()
+    val artworkDynamicColors by Settings.artworkDynamicColors.collectAsState()
     val updateState by AppUpdater.state.collectAsState()
     val context = LocalContext.current
     var showDeveloper by remember { mutableStateOf(false) }
@@ -267,6 +271,40 @@ fun SettingsScreen(onBack: (() -> Unit)? = null) {
             }
         }
 
+        item { Section("Player Experience") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Player gestures")
+                        Text("Optional swipes, double-tap Like and long-press Quick Actions inside safe player regions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = playerGestures, onCheckedChange = Settings::setPlayerGestures)
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Mini Player Lyrics")
+                        Text("Shows only the already-resolved synced lyric line; it never starts a second lyrics lookup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = miniPlayerLyrics, onCheckedChange = Settings::setMiniPlayerLyrics)
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Show Lyrics in Notification")
+                        Text("Optional line-level updates only when current synced lyrics are already available.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = notificationLyrics, onCheckedChange = Settings::setNotificationLyrics)
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Artwork Dynamic Colors")
+                        Text("Adds a cached artwork accent behind the current Live Theme without replacing it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = artworkDynamicColors, onCheckedChange = Settings::setArtworkDynamicColors)
+                }
+            }
+        }
+
         item { Section("Smart Cache") }
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -398,9 +436,9 @@ fun SettingsScreen(onBack: (() -> Unit)? = null) {
         item { Section("About") }
         item {
             Text(
-                "DEEP-ECHO Mobile 1.12.2 TEST • Universal Lyrics V2 adds wrong-lyrics rejection, actual-upload caption verification, " +
-                    "piecewise re-alignment, vocal-onset guarding, Exact Lyrics / Repair Sync, verified caching and safer source labels. " +
-                    "Playback, Ruby/Live themes, Ambient Mode, Floating Lyrics, downloads, Search/Home and session restore remain protected.",
+                "DEEP-ECHO Mobile 1.12.8 TEST • Visible UX / Player Experience upgrade adds Daily Mixes, Mood context, " +
+                    "five player presentation modes, Quick Settings tiles, share cards, Quick Actions feedback, dynamic artwork accents, " +
+                    "Mini Player lyrics, session insights, optional notification lyrics and Continue Your Vibe. Existing playback, lyrics, downloads and Smart Autoplay remain the authority.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

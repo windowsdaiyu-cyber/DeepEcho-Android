@@ -24,6 +24,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.deepecho.mobile.MainActivity
 import com.deepecho.mobile.data.Settings
+import com.deepecho.mobile.lyrics.LyricsPresentationBridge
 import com.deepecho.mobile.net.Net
 import com.deepecho.mobile.net.YouTubeApi
 import java.io.IOException
@@ -182,6 +183,44 @@ class PlaybackService : MediaSessionService() {
             }
         }
         registerResumeOnAudioDevice(player)
+
+        // v1.12.8: optional line-level notification lyrics. This only reads already-resolved
+        // lyrics from LyricsPresentationBridge; it never starts a provider/OCR request. Metadata
+        // is replaced only when the line changes, keeping background wakeups and player churn low.
+        serviceScope.launch {
+            var lastApplied = ""
+            while (isActive) {
+                val current = player.currentMediaItem
+                val mediaId = current?.mediaId.orEmpty()
+                val line = if (Settings.notificationLyrics.value && mediaId.isNotBlank()) {
+                    LyricsPresentationBridge.lineAt(mediaId, player.currentPosition)?.take(140)
+                } else null
+                val stateKey = "$mediaId|${Settings.notificationLyrics.value}|${line.orEmpty()}"
+                if (current != null && player.currentMediaItemIndex >= 0 && stateKey != lastApplied) {
+                    lastApplied = stateKey
+                    val existing = current.mediaMetadata
+                    val originalArtist = existing.albumArtist ?: existing.artist
+                    val desiredArtist = if (!line.isNullOrBlank() && !originalArtist.isNullOrBlank()) {
+                        "$originalArtist  •  $line"
+                    } else originalArtist
+                    val desiredDescription = line
+                    if (existing.artist?.toString() != desiredArtist?.toString() ||
+                        existing.description?.toString() != desiredDescription
+                    ) {
+                        val updated = current.buildUpon()
+                            .setMediaMetadata(
+                                existing.buildUpon()
+                                    .setArtist(desiredArtist)
+                                    .setDescription(desiredDescription)
+                                    .build()
+                            )
+                            .build()
+                        player.replaceMediaItem(player.currentMediaItemIndex, updated)
+                    }
+                }
+                delay(750L)
+            }
+        }
 
         val openApp = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),

@@ -6,6 +6,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -378,6 +379,10 @@ fun MiniPlayer(onClick: () -> Unit) {
     var dragging by remember(song.url) { mutableStateOf(false) }
     var dragValue by remember(song.url) { mutableFloatStateOf(0f) }
     val shown = if (dragging) dragValue else PlayerClient.positionMs.toFloat()
+    val miniLyricsEnabled by Settings.miniPlayerLyrics.collectAsState()
+    val miniLyric = if (miniLyricsEnabled) {
+        LyricsPresentationBridge.lineAt(song.url, PlayerClient.positionMs)
+    } else null
 
     var swipeX by remember(song.url) { mutableFloatStateOf(0f) }
     var swipeY by remember(song.url) { mutableFloatStateOf(0f) }
@@ -427,6 +432,15 @@ fun MiniPlayer(onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (!miniLyric.isNullOrBlank()) {
+                    Text(
+                        miniLyric,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             IconButton(onClick = { PlayerClient.prev() }) {
                 Icon(Icons.Filled.SkipPrevious, "Previous song")
@@ -1306,7 +1320,11 @@ private fun AmbientFullscreenPlayer(
 @Composable
 fun PlayerScreen(onClose: () -> Unit) {
     val song = PlayerClient.currentSong
-    var showLyrics by remember(song?.url) { mutableStateOf(UiEvents.consumeLyricsRequest()) }
+    val initialLyrics = remember(song?.url) { UiEvents.consumeLyricsRequest() }
+    var playerMode by remember(song?.url) {
+        mutableStateOf(if (initialLyrics) PlayerModeV1128.Lyrics else PlayerModeV1128.Artwork)
+    }
+    val showLyrics = playerMode == PlayerModeV1128.Lyrics
     val liked by Store.liked.collectAsState()
     val downloads by Store.downloads.collectAsState()
     val progress by Downloads.progress.collectAsState()
@@ -1326,6 +1344,9 @@ fun PlayerScreen(onClose: () -> Unit) {
         Settings.setAmbientMode(false)
     }
     val theme by Settings.theme.collectAsState()
+    val gesturesEnabled by Settings.playerGestures.collectAsState()
+    var gestureX by remember(song?.url) { mutableFloatStateOf(0f) }
+    var gestureY by remember(song?.url) { mutableFloatStateOf(0f) }
     var likeBurst by remember(song?.url) { mutableIntStateOf(0) }
     var downloadBurst by remember(song?.url) { mutableIntStateOf(0) }
     var ambientVideo by remember(song?.url) { mutableStateOf(false) }
@@ -1357,6 +1378,7 @@ fun PlayerScreen(onClose: () -> Unit) {
             song = song,
             onExitAmbient = {
                 ambientMode = false
+                playerMode = PlayerModeV1128.Artwork
                 Settings.setAmbientMode(false)
             },
             onClosePlayer = {
@@ -1371,6 +1393,7 @@ fun PlayerScreen(onClose: () -> Unit) {
     AmbientImmersiveWindow(false)
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AmbientPlayerBackdrop(Modifier.fillMaxSize())
+        ArtworkDynamicBackdropV1128(song, Modifier.fillMaxSize())
         Column(
             Modifier.fillMaxSize()
                 .pointerInput(Unit) { detectTapGestures { } }
@@ -1380,7 +1403,21 @@ fun PlayerScreen(onClose: () -> Unit) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.KeyboardArrowDown, "Close", Modifier.size(32.dp)) }
             Text("Now playing", Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Artwork" else "Lyrics") }
+            TextButton(onClick = {
+                playerMode = if (showLyrics) PlayerModeV1128.Artwork else PlayerModeV1128.Lyrics
+            }) { Text(if (showLyrics) "Artwork" else "Lyrics") }
+        }
+
+        PlayerModeSelectorV1128(playerMode) { requested ->
+            if (requested == PlayerModeV1128.Ambient) {
+                playerMode = PlayerModeV1128.Ambient
+                ambientMode = true
+                Settings.setAmbientMode(true)
+            } else {
+                ambientMode = false
+                Settings.setAmbientMode(false)
+                playerMode = requested
+            }
         }
 
         // Phone-safe Ambient control: the older layout exposed Ambient only in the
@@ -1411,6 +1448,8 @@ fun PlayerScreen(onClose: () -> Unit) {
                     checked = ambientMode,
                     onCheckedChange = { enabled ->
                         ambientMode = enabled
+                        if (enabled) playerMode = PlayerModeV1128.Ambient
+                        else if (playerMode == PlayerModeV1128.Ambient) playerMode = PlayerModeV1128.Artwork
                         Settings.setAmbientMode(enabled)
                         if (!enabled) ambientVideo = false
                     },
@@ -1422,24 +1461,61 @@ fun PlayerScreen(onClose: () -> Unit) {
             }
         }
 
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val stageGestureModifier = if (gesturesEnabled && song != null && !showLyrics) {
+            Modifier
+                .pointerInput(song.url, playerMode) {
+                    detectDragGestures(
+                        onDragStart = { gestureX = 0f; gestureY = 0f },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            gestureX += amount.x
+                            gestureY += amount.y
+                        },
+                        onDragEnd = {
+                            val horizontal = kotlin.math.abs(gestureX) > kotlin.math.abs(gestureY)
+                            if (horizontal && kotlin.math.abs(gestureX) > 95f) {
+                                if (gestureX < 0f) PlayerClient.prev() else PlayerClient.next()
+                            } else if (!horizontal && kotlin.math.abs(gestureY) > 95f) {
+                                PlayerClient.changeVolume(
+                                    (PlayerClient.volume + if (gestureY < 0f) .08f else -.08f).coerceIn(0f, 1f)
+                                )
+                            }
+                            gestureX = 0f; gestureY = 0f
+                        },
+                        onDragCancel = { gestureX = 0f; gestureY = 0f }
+                    )
+                }
+                .pointerInput(song.url) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            Store.toggleLike(song)
+                            likeBurst += 1
+                        },
+                        onLongPress = { showSongActions = true }
+                    )
+                }
+        } else Modifier
+
+        Box(
+            Modifier.weight(1f).fillMaxWidth().then(stageGestureModifier),
+            contentAlignment = Alignment.Center
+        ) {
             if (song == null) {
                 Text("Kuch play nahi ho raha", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else if (ambientMode && !showLyrics) {
-                AmbientMediaStage(
-                    song = song,
-                    videoEnabled = ambientVideo,
-                    onToggleVideo = { ambientVideo = !ambientVideo },
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else if (showLyrics) {
-                LyricsView(
-                    song = song,
-                    syncRequest = lyricsSyncRequest,
-                    onSyncNeededChange = { lyricsNeedsSync = it }
-                )
             } else {
-                Art(song.thumb, Modifier.fillMaxWidth().aspectRatio(1f), RoundedCornerShape(20.dp))
+                Crossfade(targetState = playerMode, animationSpec = tween(220), label = "player_mode") { mode ->
+                    when (mode) {
+                        PlayerModeV1128.Lyrics -> LyricsView(
+                            song = song,
+                            syncRequest = lyricsSyncRequest,
+                            onSyncNeededChange = { lyricsNeedsSync = it }
+                        )
+                        PlayerModeV1128.Visualizer -> VisualizerModeV1128(song, Modifier.fillMaxSize())
+                        PlayerModeV1128.Minimal -> MinimalModeV1128(song, Modifier.fillMaxSize())
+                        PlayerModeV1128.Ambient, PlayerModeV1128.Artwork ->
+                            Art(song.thumb, Modifier.fillMaxWidth().aspectRatio(1f), RoundedCornerShape(20.dp))
+                    }
+                }
             }
         }
 
@@ -1509,7 +1585,7 @@ fun PlayerScreen(onClose: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     TextButton(
-                        onClick = { showLyrics = true },
+                        onClick = { playerMode = PlayerModeV1128.Lyrics },
                         modifier = Modifier.weight(0.72f)
                     ) {
                         Text("Lyrics", maxLines = 1)

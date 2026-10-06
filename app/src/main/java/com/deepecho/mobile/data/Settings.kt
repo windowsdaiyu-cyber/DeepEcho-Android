@@ -29,6 +29,12 @@ object Settings {
     val smartCache = MutableStateFlow(false)
     val autoUpdateCheck = MutableStateFlow(true)
 
+    // v1.12.8 visible player experience
+    val playerGestures = MutableStateFlow(false)
+    val miniPlayerLyrics = MutableStateFlow(true)
+    val notificationLyrics = MutableStateFlow(false)
+    val artworkDynamicColors = MutableStateFlow(true)
+
     // Player & audio
     val dataSaverMode = MutableStateFlow(false)
     val downloadWithMetadata = MutableStateFlow(true)
@@ -85,6 +91,10 @@ object Settings {
         ambientMode.value = sp.getBoolean("ambient_mode", true)
         smartCache.value = sp.getBoolean("smart_cache", false)
         autoUpdateCheck.value = sp.getBoolean("auto_update_check", true)
+        playerGestures.value = sp.getBoolean("player_gestures_v1128", false)
+        miniPlayerLyrics.value = sp.getBoolean("mini_player_lyrics_v1128", true)
+        notificationLyrics.value = sp.getBoolean("notification_lyrics_v1128", false)
+        artworkDynamicColors.value = sp.getBoolean("artwork_dynamic_colors_v1128", true)
 
         dataSaverMode.value = sp.getBoolean("data_saver_mode", false)
         downloadWithMetadata.value = sp.getBoolean("download_with_metadata", true)
@@ -150,6 +160,10 @@ object Settings {
     fun setAmbientMode(enabled: Boolean) = saveBoolean(ambientMode, "ambient_mode", enabled)
     fun setSmartCache(enabled: Boolean) = saveBoolean(smartCache, "smart_cache", enabled)
     fun setAutoUpdateCheck(enabled: Boolean) = saveBoolean(autoUpdateCheck, "auto_update_check", enabled)
+    fun setPlayerGestures(enabled: Boolean) = saveBoolean(playerGestures, "player_gestures_v1128", enabled)
+    fun setMiniPlayerLyrics(enabled: Boolean) = saveBoolean(miniPlayerLyrics, "mini_player_lyrics_v1128", enabled)
+    fun setNotificationLyrics(enabled: Boolean) = saveBoolean(notificationLyrics, "notification_lyrics_v1128", enabled)
+    fun setArtworkDynamicColors(enabled: Boolean) = saveBoolean(artworkDynamicColors, "artwork_dynamic_colors_v1128", enabled)
 
     fun setDataSaverMode(v: Boolean) = saveBoolean(dataSaverMode, "data_saver_mode", v)
     fun setDownloadWithMetadata(v: Boolean) = saveBoolean(downloadWithMetadata, "download_with_metadata", v)

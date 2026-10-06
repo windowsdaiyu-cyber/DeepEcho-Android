@@ -72,6 +72,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.deepecho.mobile.data.HomeMix
+import com.deepecho.mobile.data.ExperienceV1128
+import com.deepecho.mobile.data.PersonalMixSpec
 import com.deepecho.mobile.data.LocalMusic
 import com.deepecho.mobile.data.QuoteDeck
 import com.deepecho.mobile.data.Settings
@@ -106,7 +108,8 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
     val history by Store.history.collectAsState()
     val liked by Store.liked.collectAsState()
     val smartAutoplay by Settings.smartAutoplay.collectAsState()
-    val mixes = remember(history, liked) { TasteEngine.homeMixes(history, liked) }
+    val selectedMood by ExperienceV1128.selectedMood.collectAsState()
+    val mixes = remember(history, liked, selectedMood) { TasteEngine.homeMixes(history, liked) }
     val artists by produceState<List<TopArtist>>(
         initialValue = TasteEngine.topArtists(10),
         history,
@@ -119,13 +122,8 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
     }
     var openPlaylist by remember { mutableStateOf<RemotePlaylist?>(null) }
     var openArtist by remember { mutableStateOf<TopArtist?>(null) }
-    val moods = remember {
-        listOf(
-            "Feel Good", "Romance", "Relax", "Bad Mood", "Energize",
-            "Party", "Workout", "Focus", "Chill", "Bollywood", "Pop", "Devotional"
-        )
-    }
-    var selectedMood by remember { mutableStateOf("Feel Good") }
+    var openPersonalMix by remember { mutableStateOf<PersonalMixSpec?>(null) }
+    val moods = remember { listOf("Chill", "Romantic", "Sad", "Energy", "Focus", "Party") }
 
     // Home used to start one NewPipe prewarm extraction for almost every shelf as the user
     // scrolled into it. That caused visible jank on weaker phones. Keep just one delayed,
@@ -135,6 +133,10 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
         (history.firstOrNull() ?: liked.firstOrNull())?.let { PlayerClient.prewarm(listOf(it), 1) }
     }
 
+    openPersonalMix?.let { mix ->
+        PersonalMixDetailV1128(spec = mix, onBack = { openPersonalMix = null })
+        return
+    }
     openPlaylist?.let { playlist ->
         RemotePlaylistScreen(playlist = playlist, onBack = { openPlaylist = null })
         return
@@ -202,6 +204,7 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
             item(key = "recent-hero") {
                 RecentTopTenHero(history)
             }
+            item(key = "listening-session-v1128") { ListeningSessionCardV1128() }
         }
 
         item {
@@ -220,8 +223,16 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
                     itemsIndexed(moods, key = { _, mood -> mood }) { _, mood ->
                         FilterChip(
                             selected = selectedMood == mood,
-                            onClick = { selectedMood = mood },
+                            onClick = { ExperienceV1128.setMood(if (selectedMood == mood) null else mood) },
                             label = { Text(mood, style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(32.dp)
+                        )
+                    }
+                    item(key = "clear-vibe") {
+                        FilterChip(
+                            selected = selectedMood == null,
+                            onClick = { ExperienceV1128.setMood(null) },
+                            label = { Text("Auto", style = MaterialTheme.typography.labelSmall) },
                             modifier = Modifier.height(32.dp)
                         )
                     }
@@ -229,8 +240,15 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
             }
         }
 
-        item(key = "mood-$selectedMood") {
-            TasteShelf(HomeMix("$selectedMood for you", TasteEngine.moodQuery(selectedMood)))
+        selectedMood?.let { mood ->
+            item(key = "mood-$mood") {
+                TasteShelf(HomeMix("$mood for you", TasteEngine.moodQuery(mood)))
+            }
+        }
+
+        item(key = "daily-mixes-v1128") { DailyMixesV1128(onOpen = { openPersonalMix = it }) }
+        if (history.isNotEmpty()) {
+            item(key = "continue-vibe-v1128") { ContinueVibeCardV1128(onOpen = { openPersonalMix = it }) }
         }
 
         item {

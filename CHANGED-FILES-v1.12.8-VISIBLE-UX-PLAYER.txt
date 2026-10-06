@@ -1,0 +1,42 @@
+DeepEcho Android v1.12.8 — Visible UX + Player Experience
+
+Modified production files:
+- app/build.gradle.kts
+- app/src/main/AndroidManifest.xml
+- app/src/main/java/com/deepecho/mobile/data/Settings.kt
+- app/src/main/java/com/deepecho/mobile/data/TasteEngine.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsPresentationBridge.kt
+- app/src/main/java/com/deepecho/mobile/player/PlaybackService.kt
+- app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+- app/src/main/java/com/deepecho/mobile/ui/Screens.kt
+- app/src/main/java/com/deepecho/mobile/ui/SettingsScreen.kt
+- app/src/main/java/com/deepecho/mobile/ui/SongActions.kt
+
+New production files:
+- app/src/main/java/com/deepecho/mobile/data/ExperienceV1128.kt
+- app/src/main/java/com/deepecho/mobile/quicktiles/DeepEchoTiles.kt
+- app/src/main/java/com/deepecho/mobile/ui/ArtworkColorsV1128.kt
+- app/src/main/java/com/deepecho/mobile/ui/HomeExperienceV1128.kt
+- app/src/main/java/com/deepecho/mobile/ui/PlayerExperienceV1128.kt
+- app/src/main/java/com/deepecho/mobile/ui/ShareCardV1128.kt
+
+New tests:
+- app/src/test/java/com/deepecho/mobile/data/ExperienceV1128Test.kt
+- app/src/test/java/com/deepecho/mobile/lyrics/LyricsPresentationBridgeV1128Test.kt
+
+Build/package files:
+- BUILD-TEST-APK-v1.12.8.bat
+- build_apk.bat (diagnostic retry success handling only)
+- README.md
+- CHANGED-FILES-v1.12.8-VISIBLE-UX-PLAYER.txt
+- TEST-NOTES-v1.12.8-VISIBLE-UX-PLAYER.md
+- TEST-REPORT-v1.12.8-VISIBLE-UX-PLAYER.md
+
+Protected / not rewritten:
+- app/src/main/java/com/deepecho/mobile/net/Downloads.kt
+- app/src/main/java/com/deepecho/mobile/net/YouTubeApi.kt
+- existing lyrics retrieval/OCR providers and alignment engine
+- app/src/main/java/com/deepecho/mobile/overlay/FloatingLyricsService.kt
+- app/src/main/java/com/deepecho/mobile/player/PlaybackLookahead.kt
+- app/src/main/java/com/deepecho/mobile/net/SmartCache.kt
