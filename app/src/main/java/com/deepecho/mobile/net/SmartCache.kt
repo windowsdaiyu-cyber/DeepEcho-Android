@@ -8,6 +8,10 @@ import com.deepecho.mobile.data.Song
 import com.deepecho.mobile.data.Store
 import java.io.File
 import java.io.IOException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.Request
 
 /**
@@ -16,13 +20,15 @@ import okhttp3.Request
  */
 object SmartCache {
     private const val MAX_BYTES = 256L * 1024L * 1024L
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var appContext: Context
     private lateinit var dir: File
 
     fun init(context: Context) {
         appContext = context.applicationContext
         dir = File(context.cacheDir, "deepecho-smart-audio").apply { mkdirs() }
-        trim()
+        // Cache eviction is maintenance, not a first-frame dependency.
+        scope.launch { trim() }
     }
 
     fun path(song: Song): String? {

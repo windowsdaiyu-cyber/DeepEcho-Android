@@ -1,0 +1,22 @@
+DeepEcho Android v1.12.6 — Floating Lyrics Sync Fix
+
+Production files changed/added:
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+- app/src/main/java/com/deepecho/mobile/overlay/FloatingLyricsService.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsPresentationBridge.kt (new)
+- app/src/main/java/com/deepecho/mobile/lyrics/FloatingLyricsSyncPolicy.kt (new)
+
+Test/build support:
+- app/src/test/java/com/deepecho/mobile/lyrics/FloatingLyricsSyncV126Test.kt (new)
+- build_apk.bat (test artifact label only)
+
+Protected behavior:
+- LyricsRuntimeSync.kt is unchanged.
+- Provider/orchestrator/alignment/Exact Lyrics/OCR logic is unchanged.
+- Playback, queue, downloads, Smart Autoplay and Search logic are unchanged.
+
+Fix:
+1. Floating Lyrics mirrors the exact lyrics payload already rendered by the main Lyrics UI.
+2. Exact/recovery payload changes propagate to Floating Lyrics without song restart.
+3. Overlay Visualizer capture is prevented from becoming a new lyric timing authority merely because Floating Lyrics is toggled ON.
+4. Both surfaces continue using current playback position, the same per-song manual offset, and existing lyric timestamps.

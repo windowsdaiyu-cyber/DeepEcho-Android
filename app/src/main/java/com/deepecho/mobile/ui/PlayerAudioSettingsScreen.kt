@@ -105,7 +105,7 @@ fun PlayerAudioSettingsScreen(onBack: () -> Unit) {
             SettingSwitchCard(
                 icon = Icons.Filled.Tune,
                 title = "Data Saver Mode (Beta)",
-                description = "Uses low stream quality and disables speculative preloading. Ambient video stays blocked while this is ON.",
+                description = "Uses low stream quality and reduces speculative preloading to a small source-only lookahead. Ambient video stays blocked while this is ON.",
                 checked = dataSaver,
                 onCheckedChange = Settings::setDataSaverMode
             )

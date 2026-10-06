@@ -7,11 +7,11 @@ exit /b
 
 :RUN
 setlocal EnableExtensions EnableDelayedExpansion
-title DEEP-ECHO Mobile v1.12.6 - LYRICS READY SEARCH BUILDER
+title DEEP-ECHO Mobile v1.12.7 - INSTANT START + RAPID SKIP BUILDER
 cd /d "%~dp0"
 
 echo ==============================================
-echo   DEEP-ECHO Mobile v1.12.6 - LYRICS READY SEARCH BUILDER
+echo   DEEP-ECHO Mobile v1.12.7 - INSTANT START + RAPID SKIP BUILDER
 echo   Java 17 locked - live Gradle output
 echo ==============================================
 echo.
@@ -20,7 +20,7 @@ set "BUILD_LOG=%~dp0deepecho-build.log"
 set "JAVA17="
 set "GRADLE_BAT="
 set "APK=app\build\outputs\apk\debug\app-debug.apk"
-set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.12.6-LYRICS-READY-SEARCH-TEST.apk"
+set "OUT_APK=%~dp0DEEP-ECHO-Mobile-v1.12.7-INSTANT-START-RAPID-SKIP-TEST.apk"
 
 echo [0/6] Builder started successfully.
 echo Working folder:

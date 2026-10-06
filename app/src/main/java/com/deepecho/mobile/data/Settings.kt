@@ -47,7 +47,7 @@ object Settings {
     val spatialAudio = MutableStateFlow(false)
     val audioOffload = MutableStateFlow(false)
     val preloadNextSong = MutableStateFlow(true)
-    val preloadLimit = MutableStateFlow(4)
+    val preloadLimit = MutableStateFlow(7)
     val preloadLyrics = MutableStateFlow(true)
     val progressiveSeek = MutableStateFlow(false)
     val persistentQueue = MutableStateFlow(false)
@@ -102,7 +102,7 @@ object Settings {
         spatialAudio.value = sp.getBoolean("spatial_audio", false)
         audioOffload.value = sp.getBoolean("audio_offload", false)
         preloadNextSong.value = sp.getBoolean("preload_next_song", true)
-        preloadLimit.value = sp.getInt("preload_limit", 4).coerceIn(1, 10)
+        preloadLimit.value = sp.getInt("preload_limit", 7).coerceIn(1, 10)
         preloadLyrics.value = sp.getBoolean("preload_lyrics", true)
         progressiveSeek.value = sp.getBoolean("progressive_seek", false)
         // v1.10.9 migrates automatic startup restore to song-only. The optional full-queue

@@ -1,0 +1,35 @@
+DeepEcho Android v1.12.7 — Instant Start + Rapid Skip
+
+Modified production files:
+- app/build.gradle.kts
+- app/src/main/java/com/deepecho/mobile/DeepEchoApp.kt
+- app/src/main/java/com/deepecho/mobile/MainActivity.kt
+- app/src/main/java/com/deepecho/mobile/data/Settings.kt
+- app/src/main/java/com/deepecho/mobile/net/SmartCache.kt
+- app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt
+- app/src/main/java/com/deepecho/mobile/ui/PlayerAudioSettingsScreen.kt
+
+New production files:
+- app/src/main/java/com/deepecho/mobile/player/PlaybackLookahead.kt
+- app/src/main/java/com/deepecho/mobile/player/PlaybackLookaheadPolicy.kt
+- app/src/main/java/com/deepecho/mobile/player/PlaybackPerfMetrics.kt
+
+New test:
+- app/src/test/java/com/deepecho/mobile/player/PlaybackLookaheadV1127Test.kt
+
+Build/package files:
+- BUILD-TEST-APK-v1.12.7.bat
+- build_apk.bat
+- README.md
+- TEST-NOTES-v1.12.7-INSTANT-START-RAPID-SKIP.md
+- TEST-REPORT-v1.12.7-INSTANT-START-RAPID-SKIP.md
+
+Intentionally NOT modified:
+- all app/src/main/java/com/deepecho/mobile/lyrics/*
+- player/PlaybackService.kt
+- net/YouTubeApi.kt
+- net/Downloads.kt
+- overlay/FloatingLyricsService.kt
+- ui/PlayerScreen.kt
+- ui/Screens.kt
+- data/TasteEngine.kt

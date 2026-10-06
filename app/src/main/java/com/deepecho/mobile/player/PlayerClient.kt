@@ -54,6 +54,7 @@ object PlayerClient {
     private val songs = HashMap<String, Song>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var smartJob: Job? = null
+    private var stableBackgroundJob: Job? = null
     private var smartContext = false
     private var tickerStarted = false
     private val warmSet = ConcurrentHashMap.newKeySet<String>()
@@ -110,10 +111,17 @@ object PlayerClient {
                     if (smartContext) scheduleSmartQueue(song)
                 }
                 persistSongSession(force = true)
+                controller?.let {
+                    refreshLookahead(it, "media-transition")
+                    scheduleStableBackgroundWork(it)
+                }
             }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY && controller?.playWhenReady == true) {
+                PlaybackPerfMetrics.audioReady(currentSong?.url)
+            }
             if (playbackState == Player.STATE_ENDED && smartContext) {
                 currentSong?.let { scheduleSmartQueue(it, force = true) }
             }
@@ -137,6 +145,8 @@ object PlayerClient {
 
     fun connect(ctx: Context) {
         if (controller != null) return
+        PlaybackLookahead.init(ctx)
+        PlaybackPerfMetrics.mark("player_connect_start")
         val token = SessionToken(ctx, ComponentName(ctx, PlaybackService::class.java))
         val future = MediaController.Builder(ctx, token).buildAsync()
         future.addListener({
@@ -144,9 +154,9 @@ object PlayerClient {
                 val c = future.get()
                 controller = c
                 c.addListener(listener)
-                // Default startup restore is song-only. If the user explicitly turns the optional
-                // Persistent queue setting back ON, that setting may restore the full queue instead.
-                // Navigation state is never restored.
+                // Default startup restore keeps the current song plus a bounded upcoming lookahead.
+                // Persistent Queue still controls restoration of the full queue. Navigation state is
+                // never restored and playback remains paused until the user chooses Play.
                 if (c.mediaItemCount == 0) {
                     if (Settings.persistentQueue.value) restorePersistentQueue(c)
                     else restoreSongSession(c)
@@ -159,6 +169,8 @@ object PlayerClient {
                     c.shuffleModeEnabled = true
                 }
                 sync(c)
+                refreshLookahead(c, "controller-connected")
+                PlaybackPerfMetrics.mark("player_connect_ready")
                 startTicker()
             } catch (_: Exception) {
             }
@@ -274,14 +286,18 @@ object PlayerClient {
         smartContext = false
         smartJob?.cancel()
         val safeIndex = index.coerceIn(0, list.lastIndex)
-        prewarm(list.drop(safeIndex + 1), Settings.preloadLimit.value)
+        val requested = list[safeIndex]
+        PlaybackPerfMetrics.beginTrackAction("play-tap", requested.url)
+        PlaybackLookahead.promoteUserRequested(requested, "library-play")
         list.forEach { queueReasons[it.url] = "From your playlist / library" }
         c.setMediaItems(list.map { toItem(it) }, safeIndex, 0L)
         if (Settings.persistentShuffle.value) c.shuffleModeEnabled = true
         queueRevision++
         c.prepare()
         c.play()
-        Store.addHistory(list[safeIndex])
+        Store.addHistory(requested)
+        refreshLookahead(c, "library-play")
+        scheduleStableBackgroundWork(c)
     }
 
     /** Shuffle a collection first; optionally continue with similar content afterward. */
@@ -294,13 +310,16 @@ object PlayerClient {
         smartJob?.cancel()
         queueReasons.clear()
         shuffled.forEach { queueReasons[it.url] = "Shuffled from playlist / album" }
+        PlaybackPerfMetrics.beginTrackAction("play-tap", shuffled.first().url)
+        PlaybackLookahead.promoteUserRequested(shuffled.first(), "shuffle-play")
         c.setMediaItems(shuffled.map { toItem(it) }, 0, 0L)
         c.shuffleModeEnabled = false // already shuffled once; prevents double-random order
         queueRevision++
         c.prepare()
         c.play()
         Store.addHistory(shuffled.first())
-        prewarm(shuffled.drop(1), Settings.preloadLimit.value)
+        refreshLookahead(c, "shuffle-play")
+        scheduleStableBackgroundWork(c)
         if (smartContext) scheduleSmartQueue(shuffled.first(), force = true)
     }
 
@@ -313,12 +332,16 @@ object PlayerClient {
         // happens only for likely NEXT tracks, never for the song they just tapped.
         queueReasons.clear()
         queueReasons[song.url] = "You chose this song"
+        PlaybackPerfMetrics.beginTrackAction("play-tap", song.url)
+        PlaybackLookahead.promoteUserRequested(song, "discovery-play")
         c.setMediaItem(toItem(song))
         if (Settings.persistentShuffle.value) c.shuffleModeEnabled = true
         queueRevision++
         c.prepare()
         c.play()
         Store.addHistory(song)
+        refreshLookahead(c, "discovery-play")
+        scheduleStableBackgroundWork(c)
         scheduleSmartQueue(song, force = true)
     }
 
@@ -326,7 +349,9 @@ object PlayerClient {
         if (!c.hasNextMediaItem()) return
         c.playWhenReady = true
         c.seekToNextMediaItem()
-        c.prepare()
+        // A prepared Media3 playlist does not need a full re-prepare for every Next.
+        // Only recover from IDLE; repeated prepare() calls are costly during skip bursts.
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
         c.play()
     }
 
@@ -362,6 +387,7 @@ object PlayerClient {
                 runCatching { TasteEngine.smartNext(seed, excluded, 10) }.getOrDefault(emptyList())
             }
             if (recs.isEmpty()) return@launch
+            if (!smartContext || !Settings.smartAutoplay.value) return@launch
             val live = controller ?: return@launch
             val stillExcluded = buildSet {
                 for (i in 0 until live.mediaItemCount) add(live.getMediaItemAt(i).mediaId)
@@ -371,8 +397,7 @@ object PlayerClient {
             fresh.forEach { queueReasons[it.url] = "Smart Autoplay • because of ${seed.artist.ifBlank { seed.title }}" }
             live.addMediaItems(fresh.map { toItem(it) })
             queueRevision++
-            // Warm only the first likely next track. This stays stability-first.
-            prewarm(fresh, Settings.preloadLimit.value)
+            refreshLookahead(live, "smart-autoplay-append")
 
             if (advanceAfterAppend && live.hasNextMediaItem()) {
                 advanceToNextAndPlay(live)
@@ -398,12 +423,14 @@ object PlayerClient {
     fun addToQueue(song: Song) {
         val c = controller ?: return
         smartContext = false
+        smartJob?.cancel()
         if (c.mediaItemCount == 0) playSongs(listOf(song), 0) else {
             if (!prepareDuplicateForInsert(c, song)) return
             queueReasons[song.url] = "Added by you"
             c.addMediaItem(toItem(song))
             queueRevision++
             persistQueueState()
+            refreshLookahead(c, "queue-add")
             Bus.toast("Queue mein add hua")
         }
     }
@@ -411,12 +438,14 @@ object PlayerClient {
     fun playNext(song: Song) {
         val c = controller ?: return
         smartContext = false
+        smartJob?.cancel()
         if (c.mediaItemCount == 0) playSongs(listOf(song), 0) else {
             if (!prepareDuplicateForInsert(c, song)) return
             queueReasons[song.url] = "Play next • added by you"
             c.addMediaItem((c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount), toItem(song))
             queueRevision++
             persistQueueState()
+            refreshLookahead(c, "play-next-insert")
             Bus.toast("Agla gaana set")
         }
     }
@@ -430,16 +459,26 @@ object PlayerClient {
         } else items
         if (fresh.isEmpty()) return
         smartContext = false
+        smartJob?.cancel()
         fresh.forEach { queueReasons[it.url] = "Added by you" }
         c.addMediaItems(fresh.map(::toItem))
         queueRevision++
         persistQueueState()
+        refreshLookahead(c, "queue-add-many")
         Bus.toast("${fresh.size} songs queue mein add hue")
     }
 
     fun toggle() {
         val c = controller ?: return
-        if (c.isPlaying) c.pause() else c.play()
+        if (c.isPlaying) {
+            c.pause()
+        } else {
+            PlaybackPerfMetrics.beginTrackAction("manual-play-tap", currentSong?.url)
+            PlaybackLookahead.promoteUserRequested(currentSong, "manual-play")
+            c.play()
+            refreshLookahead(c, "manual-play")
+            scheduleStableBackgroundWork(c)
+        }
     }
 
     /**
@@ -449,8 +488,20 @@ object PlayerClient {
      */
     fun next() {
         val c = controller ?: return
+        stableBackgroundJob?.cancel()
+        val burst = PlaybackLookahead.noteManualNext()
+        PlaybackPerfMetrics.mark("next-tap-$burst")
         when {
-            c.hasNextMediaItem() -> advanceToNextAndPlay(c)
+            c.hasNextMediaItem() -> {
+                val targetIndex = c.nextMediaItemIndex
+                val target = if (targetIndex in 0 until c.mediaItemCount) {
+                    songs[c.getMediaItemAt(targetIndex).mediaId]
+                } else null
+                PlaybackPerfMetrics.beginTrackAction("next-tap", target?.url)
+                PlaybackLookahead.promoteUserRequested(target, "manual-next")
+                advanceToNextAndPlay(c)
+                refreshLookahead(c, if (burst >= 2) "skip-burst" else "manual-next")
+            }
             smartContext && Settings.smartAutoplay.value -> {
                 currentSong?.let { seed ->
                     scheduleSmartQueue(seed, force = true, advanceAfterAppend = true)
@@ -518,40 +569,49 @@ object PlayerClient {
     }
 
     /**
-     * Fills the EXISTING NewPipe stream cache in the background.
-     * PlaybackService/resolve logic is untouched; this only makes likely taps start faster.
+     * Passive Home/Search warmup now shares the v1.12.7 lookahead coordinator.
+     * It warms only playback source state; lyrics/OCR/artwork/cache downloads never ride on this path.
      */
     fun prewarm(songsToWarm: List<Song>, max: Int = 1) {
-        if (!Settings.preloadNextSong.value || Settings.dataSaverMode.value) return
-        val limit = minOf(max.coerceAtLeast(0), Settings.preloadLimit.value.coerceIn(1, 10))
-        val picks = songsToWarm.asSequence()
-            .filter { Store.downloadPath(it.url) == null }
-            .filter { warmSet.add(it.url) }
-            .take(limit)
-            .toList()
-        if (picks.isEmpty()) return
+        PlaybackLookahead.passiveWarm(songsToWarm, max, "ui-visible")
+    }
 
-        // Stability-first warmup: one delayed resolve at a time. Any extractor/network
-        // failure is contained here and NEVER reaches Android's uncaught-exception handler.
-        // The delay also lets a real user Play/Download tap take priority over speculation.
-        scope.launch(Dispatchers.IO) {
-            delay(650)
-            for (song in picks) {
-                try {
-                    if (!buffering) {
-                        runCatching { com.deepecho.mobile.net.YouTubeApi.resolve(song.url) }
-                        if (Settings.preloadLyrics.value) runCatching { Lrclib.fetch(song) }
-                        if (Settings.smartCache.value) {
-                            runCatching { SmartCache.cache(song) }
-                        }
-                    }
-                } finally {
-                    warmSet.remove(song.url)
+    private fun upcomingSongs(c: MediaController, limit: Int = 12): List<Song> {
+        val start = (c.currentMediaItemIndex + 1).coerceAtLeast(0)
+        if (start >= c.mediaItemCount) return emptyList()
+        return (start until minOf(c.mediaItemCount, start + limit)).mapNotNull { i ->
+            songs[c.getMediaItemAt(i).mediaId]
+        }
+    }
+
+    private fun refreshLookahead(c: MediaController, reason: String) {
+        val current = c.currentMediaItem?.mediaId?.let { songs[it] } ?: currentSong
+        PlaybackLookahead.plan(current, upcomingSongs(c), reason)
+    }
+
+    /**
+     * Preserve optional lyrics/SmartCache prefetch, but keep it OUT of Play/Next critical paths.
+     * Rapidly skipped tracks never start this work; it begins only after the user settles.
+     */
+    private fun scheduleStableBackgroundWork(c: MediaController) {
+        stableBackgroundJob?.cancel()
+        val mediaId = c.currentMediaItem?.mediaId ?: return
+        stableBackgroundJob = scope.launch {
+            delay(2_200L)
+            if (controller?.currentMediaItem?.mediaId != mediaId || PlaybackLookahead.inSkipBurst()) return@launch
+            val next = controller?.let { upcomingSongs(it, 1).firstOrNull() }
+            if (Settings.preloadLyrics.value && next != null) {
+                launch(Dispatchers.IO) { runCatching { Lrclib.fetch(next) } }
+            }
+            if (Settings.smartCache.value) {
+                delay(5_800L)
+                if (controller?.currentMediaItem?.mediaId == mediaId && !buffering && !PlaybackLookahead.inSkipBurst()) {
+                    val current = songs[mediaId]
+                    if (current != null) launch(Dispatchers.IO) { runCatching { SmartCache.cache(current) } }
                 }
             }
         }
     }
-
 
     fun queueSnapshot(): List<QueueEntry> {
         val c = controller ?: return emptyList()
@@ -574,6 +634,7 @@ object PlayerClient {
         c.moveMediaItem(from, to)
         queueRevision++
         persistQueueState()
+        refreshLookahead(c, "queue-reorder")
     }
 
     fun removeQueueItem(index: Int) {
@@ -582,16 +643,20 @@ object PlayerClient {
         c.removeMediaItem(index)
         queueRevision++
         persistQueueState()
+        refreshLookahead(c, "queue-remove")
     }
 
     fun playQueueItem(index: Int) {
         val c = controller ?: return
         if (index !in 0 until c.mediaItemCount) return
         c.playWhenReady = true
+        val target = songs[c.getMediaItemAt(index).mediaId]
+        PlaybackLookahead.promoteUserRequested(target, "queue-item")
         c.seekToDefaultPosition(index)
-        c.prepare()
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
         c.play()
         queueRevision++
+        refreshLookahead(c, "queue-item")
     }
 
     fun clearUpcomingQueue() {
@@ -601,6 +666,7 @@ object PlayerClient {
             c.removeMediaItems(from, c.mediaItemCount)
             queueRevision++
             persistQueueState()
+            refreshLookahead(c, "queue-clear")
             Bus.toast("Upcoming queue clear ho gayi")
         }
     }
@@ -661,8 +727,8 @@ object PlayerClient {
     }
 
     /**
-     * Save only the current song, timestamp and selected Live Theme. UI/navigation and the old
-     * queue are intentionally excluded from automatic session restore.
+     * Save current playback state plus a bounded upcoming lookahead for fast restored Play/Next.
+     * Full queue persistence remains an explicit setting; UI/navigation is never restored.
      */
     fun persistSongSession(force: Boolean = false) {
         val c = controller ?: return
@@ -671,6 +737,19 @@ object PlayerClient {
         if (!force && now - lastSessionPersistAt < 2_500L) return
         lastSessionPersistAt = now
         runCatching {
+            val upcoming = JSONArray()
+            val start = c.currentMediaItemIndex + 1
+            for (i in start until minOf(c.mediaItemCount, start + 8)) {
+                val next = songs[c.getMediaItemAt(i).mediaId] ?: continue
+                upcoming.put(
+                    JSONObject()
+                        .put("url", next.url)
+                        .put("title", next.title)
+                        .put("artist", next.artist)
+                        .put("duration", next.durationSec)
+                        .put("thumb", next.thumb ?: "")
+                )
+            }
             val root = JSONObject()
                 .put("url", song.url)
                 .put("title", song.title)
@@ -679,6 +758,8 @@ object PlayerClient {
                 .put("thumb", song.thumb ?: "")
                 .put("position", c.currentPosition.coerceAtLeast(0L))
                 .put("theme", Settings.theme.value)
+                .put("smartContext", smartContext)
+                .put("upcoming", upcoming)
             Settings.putString("last_song_session", root.toString())
             if (song.artist.startsWith("Podcast •")) Podcasts.saveProgress(song.url, c.currentPosition.coerceAtLeast(0L))
         }
@@ -705,12 +786,36 @@ object PlayerClient {
             if (savedTheme.isNotBlank()) Settings.setTheme(savedTheme)
             Settings.setLiveTheme(true)
 
+            val upcomingJson = root.optJSONArray("upcoming") ?: JSONArray()
+            val upcoming = buildList {
+                for (i in 0 until upcomingJson.length().coerceAtMost(8)) {
+                    val o = upcomingJson.optJSONObject(i) ?: continue
+                    val nextUrl = o.optString("url").trim()
+                    if (nextUrl.isBlank() || nextUrl == song.url) continue
+                    add(
+                        Song(
+                            url = nextUrl,
+                            title = o.optString("title", "Unknown"),
+                            artist = o.optString("artist", ""),
+                            durationSec = o.optLong("duration", 0L).coerceAtLeast(0L),
+                            thumb = o.optString("thumb").ifBlank { null }
+                        )
+                    )
+                }
+            }.distinctBy { it.url }
+
             restoredSessionMediaId = song.url
+            smartContext = root.optBoolean("smartContext", false)
+            queueReasons[song.url] = "Restored session"
+            upcoming.forEach { queueReasons[it.url] = if (smartContext) "Restored Smart Autoplay" else "Restored up next" }
             c.playWhenReady = false
-            c.setMediaItems(listOf(toItem(song)), 0, position)
+            c.setMediaItems((listOf(song) + upcoming).map(::toItem), 0, position)
+            // prepare() while paused pre-buffers the restored current item without audible autoplay.
             c.prepare()
             c.pause()
-            smartContext = false
+            PlaybackLookahead.promoteUserRequested(song, "session-restore-current")
+            refreshLookahead(c, "session-restore")
+            PlaybackPerfMetrics.mark("session-restored")
             queueRevision++
             true
         }.getOrDefault(false)
@@ -769,6 +874,9 @@ object PlayerClient {
             c.setMediaItems(restored.map(::toItem), index, position)
             c.prepare()
             c.pause()
+            smartContext = false
+            PlaybackLookahead.promoteUserRequested(restored[index], "persistent-queue-restore-current")
+            refreshLookahead(c, "persistent-queue-restore")
             queueRevision++
         }
     }

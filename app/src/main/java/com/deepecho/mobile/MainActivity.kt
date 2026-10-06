@@ -45,6 +45,7 @@ import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.net.AppUpdater
 import com.deepecho.mobile.net.Bus
 import com.deepecho.mobile.player.PlayerClient
+import com.deepecho.mobile.player.PlaybackPerfMetrics
 import com.deepecho.mobile.ui.AppUpdateDialog
 import com.deepecho.mobile.ui.DeepEchoTheme
 import com.deepecho.mobile.ui.HomeScreen
@@ -69,13 +70,24 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        PlayerClient.connect(applicationContext)
+        PlaybackPerfMetrics.mark("activity-onCreate")
+
+        // Put the Compose shell on screen before connecting the background player/session.
+        // Player state is observable, so restored metadata appears as soon as MediaController is ready.
         setContent { App() }
+        window.decorView.post {
+            PlaybackPerfMetrics.mark("ui-attached")
+            PlayerClient.connect(applicationContext)
+        }
+
+        // Notification permission is important but must not sit in front of first-frame setup.
+        window.decorView.postDelayed({
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }, 650L)
     }
 
     override fun onResume() {
@@ -84,7 +96,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        // Save song/timestamp/theme only. A fresh app launch intentionally opens Home.
+        // Save playback/session lookahead only. A fresh app launch still intentionally opens Home.
         PlayerClient.persistSongSession(force = true)
         super.onStop()
     }
@@ -104,8 +116,18 @@ fun App() {
             var tab by remember { mutableIntStateOf(0) }
             var showPlayer by remember { mutableStateOf(false) }
             var showSettings by remember { mutableStateOf(false) }
+            var liveEffectsReady by remember { mutableStateOf(false) }
 
+            LaunchedEffect(theme) {
+                // Correct theme colors are already applied by DeepEchoTheme/Surface; defer only
+                // the heavier animated backdrop until the first usable UI has had a chance to draw.
+                liveEffectsReady = false
+                delay(120L)
+                liveEffectsReady = true
+            }
             LaunchedEffect(Unit) {
+                PlaybackPerfMetrics.mark("first-compose-effect")
+                PlaybackPerfMetrics.latency("app-onCreate-start", "first-usable-compose")
                 Bus.messages.collect { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show() }
             }
             LaunchedEffect(Unit) {
@@ -129,7 +151,7 @@ fun App() {
             BackHandler(enabled = showSettings && !showPlayer) { showSettings = false }
 
             Box(Modifier.fillMaxSize()) {
-                LiveThemeBackdrop(Modifier.fillMaxSize())
+                if (liveEffectsReady) LiveThemeBackdrop(Modifier.fillMaxSize())
                 Scaffold(
                     containerColor = Color.Transparent,
                     contentColor = MaterialTheme.colorScheme.onBackground,

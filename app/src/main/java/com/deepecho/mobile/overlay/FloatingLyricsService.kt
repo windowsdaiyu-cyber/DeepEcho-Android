@@ -23,6 +23,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.lyrics.LyricsRuntimeSync
+import com.deepecho.mobile.lyrics.LyricsPresentationBridge
+import com.deepecho.mobile.lyrics.FloatingLyricsSyncPolicy
 import com.deepecho.mobile.net.Lrclib
 import com.deepecho.mobile.net.Lyrics
 import com.deepecho.mobile.player.AudioReactive
@@ -429,8 +431,20 @@ class FloatingLyricsService : Service() {
             }
             setLyricAnimated("Loading lyrics…")
             nextView?.text = ""
-            lyrics = withContext(Dispatchers.IO) {
+
+            // Prefer the exact payload already resolved/rendered by the main Lyrics UI.
+            // Only fall back to the normal facade when the main UI has not published yet.
+            lyrics = LyricsPresentationBridge.current(song.url) ?: withContext(Dispatchers.IO) {
                 runCatching { Lrclib.fetch(song) }.getOrNull()
+            }
+        }
+
+        // Exact Lyrics / live-video recovery can replace the resolved payload while the same
+        // song keeps playing. Adopt that payload immediately instead of waiting for song change.
+        LyricsPresentationBridge.current(song.url)?.let { shared ->
+            if (shared !== lyrics) {
+                lyrics = shared
+                lastLine = null
             }
         }
 
@@ -441,8 +455,14 @@ class FloatingLyricsService : Service() {
         } else if (data.synced.isNotEmpty()) {
             val manualOffset = Settings.getInt("lyrics_offset_${song.videoId}", 0).toLong()
             val rawPos = (PlayerClient.positionMs + manualOffset).coerceAtLeast(0L)
+            // Visualizer capture belongs to the overlay animation only. It must not change
+            // the lyric clock just because Floating Lyrics was toggled on.
+            val timingCapture = FloatingLyricsSyncPolicy.timingCaptureEnabled(
+                overlayEnabled = true,
+                realCapture = AudioReactive.realCapture.value
+            )
             val pos = LyricsRuntimeSync.effectivePosition(
-                song.url, rawPos, data, AudioReactive.realCapture.value, AudioReactive.vocalLikelihood.value
+                song.url, rawPos, data, timingCapture, AudioReactive.vocalLikelihood.value
             )
             val index = if (pos < 0L) -1 else data.synced.indexOfLast { it.timeMs <= pos }
             if (index < 0) {

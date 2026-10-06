@@ -125,6 +125,8 @@ import com.deepecho.mobile.data.Store
 import com.deepecho.mobile.data.ThemeAdvisor
 import com.deepecho.mobile.data.TopArtist
 import com.deepecho.mobile.lyrics.LyricsRuntimeSync
+import com.deepecho.mobile.lyrics.LyricsPresentationBridge
+import com.deepecho.mobile.lyrics.FloatingLyricsSyncPolicy
 import com.deepecho.mobile.lyrics.LyricsProgress
 import com.deepecho.mobile.lyrics.LyricVideoEligibility
 import com.deepecho.mobile.lyrics.LyricsLiveVideoReader
@@ -624,6 +626,7 @@ private fun AmbientLyricsPane(song: Song, modifier: Modifier = Modifier) {
     val energy by AudioReactive.energy.collectAsState()
     val realCapture by AudioReactive.realCapture.collectAsState()
     val vocalLikelihood by AudioReactive.vocalLikelihood.collectAsState()
+    val overlayEnabled by FloatingLyricsController.enabled.collectAsState()
     val progressMap by LyricsProgress.states.collectAsState()
     val state by produceState<LyricsState>(initialValue = LyricsState.Loading, song.url) {
         value = LyricsState.Loading
@@ -636,8 +639,15 @@ private fun AmbientLyricsPane(song: Song, modifier: Modifier = Modifier) {
     val savedOffset = remember(song.url) { Settings.getInt("lyrics_offset_${song.videoId}", 0).toLong() }
     val rawPosition = (PlayerClient.positionMs + savedOffset).coerceAtLeast(0L)
     val currentLyrics = (state as? LyricsState.Ok)?.lyrics
+    LaunchedEffect(song.url, currentLyrics) {
+        currentLyrics?.let { LyricsPresentationBridge.publish(song.url, it) }
+    }
     val position = currentLyrics?.let {
-        LyricsRuntimeSync.effectivePosition(song.url, rawPosition, it, realCapture, vocalLikelihood)
+        val timingCapture = FloatingLyricsSyncPolicy.timingCaptureEnabled(
+            overlayEnabled = overlayEnabled,
+            realCapture = realCapture
+        )
+        LyricsRuntimeSync.effectivePosition(song.url, rawPosition, it, timingCapture, vocalLikelihood)
     } ?: rawPosition
     val duration = PlayerClient.durationMs.coerceAtLeast((song.durationSec * 1000L).coerceAtLeast(1L))
     val waitingForVocal = position < 0L
@@ -2009,6 +2019,11 @@ fun LyricsView(
                 }
 
                 is LyricsState.Ok -> {
+                    // Publish exactly what the main Lyrics UI is rendering so Floating Lyrics
+                    // mirrors this resolved payload instead of starting a competing fetch/timeline.
+                    LaunchedEffect(song.url, s.lyrics) {
+                        LyricsPresentationBridge.publish(song.url, s.lyrics)
+                    }
                     val lines = s.lyrics.synced
                     if (lines.isEmpty()) {
                         Column(
@@ -2038,8 +2053,15 @@ fun LyricsView(
                         }
                     } else {
                         val rawPos = (PlayerClient.positionMs + offsetMs).coerceAtLeast(0L)
+                        // Floating Lyrics may turn on Visualizer capture for animation. Do not
+                        // let that UI action alter the master lyric timing mode. While the overlay
+                        // is active both surfaces use the same resolved timestamps + offset.
+                        val timingCapture = FloatingLyricsSyncPolicy.timingCaptureEnabled(
+                            overlayEnabled = overlayEnabled,
+                            realCapture = realCapture
+                        )
                         val pos = LyricsRuntimeSync.effectivePosition(
-                            song.url, rawPos, s.lyrics, realCapture, vocalLikelihood
+                            song.url, rawPos, s.lyrics, timingCapture, vocalLikelihood
                         )
                         val idx = if (pos < 0L) -1 else lines.indexOfLast { it.timeMs <= pos }
                         val listState = rememberLazyListState()

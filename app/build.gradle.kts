@@ -16,8 +16,8 @@ android {
         applicationId = "com.deepecho.mobile"
         minSdk = 26
         targetSdk = 34
-        versionCode = 35
-        versionName = "1.12.6"
+        versionCode = 36
+        versionName = "1.12.7"
     }
 
     // Ek fixed keystore (build_apk.bat bana deta hai) taaki updates purani APK ke upar install ho sakein
