@@ -1,0 +1,21 @@
+DeepEcho Android v1.12.10 - Artwork + Player Cleanup
+
+Changed:
+- app/build.gradle.kts (1.12.10 / versionCode 39)
+- app/src/main/java/com/deepecho/mobile/ui/PlayerExperienceV1128.kt
+  * visible player tabs are Artwork / Lyrics / Minimal only
+  * Visualizer is no longer exposed as a player mode
+  * Ambient is no longer exposed as a player mode; existing switch remains
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+  * Ambient entry is switch-only
+- app/src/main/java/com/deepecho/mobile/ui/Common.kt
+  * central Art() now requests high-quality CDN candidates and a large decode size
+  * max-res YouTube + Google image promotion with graceful fallback
+- app/src/main/java/com/deepecho/mobile/data/ArtworkQuality.kt (new)
+- app/src/test/java/com/deepecho/mobile/data/ArtworkQualityV11210Test.kt (new)
+- app/src/test/java/com/deepecho/mobile/ui/PlayerModesV11210Test.kt (new)
+- app/src/main/java/com/deepecho/mobile/ui/SettingsScreen.kt (copy text only)
+- root build scripts renamed/versioned for v1.12.10
+
+Protected / intentionally unchanged:
+PlaybackService, PlayerClient, Downloads, YouTubeApi, LyricsOrchestrator, FloatingLyricsService, SmartCache, PlaybackLookahead, theme implementation, Home recommendation logic, Search logic, queue logic.

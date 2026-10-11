@@ -1,0 +1,19 @@
+DeepEcho Android v1.12.9 Premium Home UI
+
+Changed:
+- app/build.gradle.kts
+- app/src/main/java/com/deepecho/mobile/MainActivity.kt
+- app/src/main/java/com/deepecho/mobile/ui/Screens.kt
+- app/src/main/java/com/deepecho/mobile/ui/HomeExperienceV1128.kt
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+- build_apk.bat
+- README.md
+
+Added:
+- BUILD-TEST-APK-v1.12.9.bat
+- README-v1.12.9-PREMIUM-HOME.txt
+- CHANGED-FILES-v1.12.9-PREMIUM-HOME.txt
+
+Removed from this test package to avoid confusion:
+- BUILD-TEST-APK-v1.12.7.bat
+- BUILD-TEST-APK-v1.12.8.bat

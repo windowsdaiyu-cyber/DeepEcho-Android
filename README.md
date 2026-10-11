@@ -1,49 +1,36 @@
-# DEEP-ECHO Mobile v1.12.8 — Visible UX + Player Experience
+# DEEP-ECHO Mobile v1.12.10 — Artwork + Player Cleanup Test Line
 
-This release is built directly on the successfully released v1.12.7 Instant Start + Rapid Skip baseline. The existing playback, lyrics, downloads, queue, Smart Autoplay, MediaSession and theme architecture are preserved and the v1.12.8 features are integrated on top.
+This build is based directly on the successfully compiling v1.12.9 Premium Home source.
 
-## v1.12.8 highlights
+## What changed
 
-- Dynamic Android lock-screen / media-session presentation.
-- Quick Settings tiles for Play/Pause, Open DeepEcho, Floating Lyrics and Smart Autoplay.
-- Home Mood Selector integrated as an additive recommendation context.
-- Personalized Daily Mixes / Your Mixes.
-- Five player presentation modes: Artwork, Lyrics, Visualizer, Ambient and Minimal.
-- Optional player gestures with protected seek/lyrics/system-gesture regions.
-- Theme-aware Android song share-card generator using the native share sheet.
-- Expanded per-song Quick Actions with More Like This / Less Like This.
-- Artwork-derived secondary player accents with cached palette extraction.
-- Optional synced current-lyric line in the mini player.
-- Listening Session cards using local listening data.
-- Optional line-level lyrics in the expanded media notification where Android permits.
-- Continue Your Vibe to restore a previous listening context without blindly replaying the old queue.
+- Full Player mode row now exposes only **Artwork**, **Lyrics** and **Minimal**.
+- **Visualizer** is no longer a visible player mode. Its internal audio-reactive support remains available for existing features such as Floating Lyrics.
+- **Ambient** is no longer a visible player mode. Ambient remains available through the existing **Ambient switch** only.
+- Central `Art()` rendering now requests larger image decodes and promotes known YouTube/Google image-CDN URLs to higher-resolution artwork with graceful fallback.
+- The artwork improvement applies automatically to Full Player, Home, Search, mini-player, playlist/detail cards, song rows, artist surfaces, queue and other in-app surfaces that already use the shared `Art()` component.
+- Data Saver keeps its conservative artwork behavior instead of forcing high-resolution promotion.
 
-## Protected v1.12.7 behavior
+## Protected systems
 
-The v1.12.7 instant-start / rapid-skip line remains the performance baseline. Playback stays higher priority than artwork, lyrics presentation, Home decoration and recommendation refresh work. Existing lyrics retrieval/sync/OCR logic is not replaced by the new lyrics surfaces.
+PlaybackService, PlayerClient, YouTube stream resolution, Downloads, SmartCache, PlaybackLookahead, lyrics retrieval/sync/OCR, Floating Lyrics service, Smart Autoplay/queue logic, Home recommendation logic and the theme implementation are intentionally unchanged.
 
-## Build/test on Windows
+## Build on Windows
 
-Run the root-level file:
+Fresh-extract the ZIP and run this file from the **ROOT** of the project folder:
 
-`BUILD-TEST-APK-v1.12.8.bat`
+`BUILD-TEST-APK-v1.12.10.bat`
 
-It uses the same permanent DeepEcho Android signing key path established by previous releases and produces:
+The builder runs unit tests and then assembles the signed debug APK using your existing permanent DeepEcho Android signing key.
 
-`DEEP-ECHO-Mobile-v1.12.8-VISIBLE-UX-PLAYER-TEST.apk`
+Expected APK:
 
-## One-click public release
+`DEEP-ECHO-Mobile-v1.12.10-ARTWORK-PLAYER-CLEANUP-TEST.apk`
 
-After emulator/phone testing, run:
+## Quick emulator checklist
 
-`RELEASE-v1.12.8.bat`
-
-The release runner verifies the exact source manifest, checks that tag `v1.12.8` does not already exist, runs unit tests + a signed release build, verifies package/version/signing certificate, syncs the Android GitHub repository, pushes tag `v1.12.8`, and waits for the public GitHub Release APK + SHA256 assets.
-
-The runner never force-overwrites an existing tag and does not touch the PC/Windows DeepEcho repository.
-
-## Android package
-
-- Package: `com.deepecho.mobile`
-- Version name: `1.12.8`
-- Version code: `37`
+1. Full Player top mode row should show only Artwork / Lyrics / Minimal.
+2. Ambient switch should still enter and exit Ambient normally.
+3. Test 3–5 songs with visibly different covers in Full Player, Home and Search; high-resolution artwork should replace low-resolution sources when available.
+4. Check mini-player, playlist/detail, queue and artist artwork.
+5. Regression-test Play/Pause, Next/Rapid Next, Previous, Seek, Queue, Downloads, Smart Autoplay, Lyrics, Word-by-Word, Romanized, Floating Lyrics, Exact Lyrics, themes, notification/lock screen and background playback.

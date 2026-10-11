@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,13 +44,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.deepecho.mobile.data.Song
+import com.deepecho.mobile.data.ArtworkQuality
 import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.data.Store
 import com.deepecho.mobile.net.Downloads
@@ -60,43 +64,68 @@ fun fmtTime(ms: Long): String {
     return "%d:%02d".format(s / 60, s % 60)
 }
 
-private fun upgradedArtworkUrl(url: String): String? {
-    val match = Regex("""https?://(?:i|img)\.ytimg\.com/(?:vi|vi_webp)/([^/]+)/[^?]+""")
-        .find(url) ?: return null
-    val id = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
-    return "https://i.ytimg.com/vi/$id/maxresdefault.jpg"
+@Composable
+private fun HighQualityArtworkCandidate(
+    candidates: List<String>,
+    index: Int,
+    decodeSizePx: Int,
+    modifier: Modifier
+) {
+    if (index >= candidates.size) {
+        Icon(Icons.Filled.MusicNote, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    val context = LocalContext.current
+    val url = candidates[index]
+    val request = remember(url, decodeSizePx) {
+        ImageRequest.Builder(context)
+            .data(url)
+            // Decode at a phone-artwork-safe size. This prevents a tiny cached decode from being
+            // stretched into the large Now Playing/Home/Search surfaces.
+            .size(decodeSizePx)
+            .crossfade(false)
+            .build()
+    }
+    SubcomposeAsyncImage(
+        model = request,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = modifier,
+        error = {
+            HighQualityArtworkCandidate(
+                candidates = candidates,
+                index = index + 1,
+                decodeSizePx = decodeSizePx,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    )
 }
 
 @Composable
 fun Art(url: String?, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(10.dp)) {
     val dataSaver by Settings.dataSaverMode.collectAsState()
-    Box(
+    val candidates = remember(url, dataSaver) { ArtworkQuality.candidates(url, dataSaver) }
+    val decodeCap = remember(dataSaver) { ArtworkQuality.decodeSizePx(dataSaver) }
+    val density = LocalDensity.current
+    BoxWithConstraints(
         modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
-        if (url != null) {
-            val upgraded = remember(url, dataSaver) { if (dataSaver) null else upgradedArtworkUrl(url) }
-            if (upgraded != null && upgraded != url) {
-                SubcomposeAsyncImage(
-                    model = upgraded,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    error = {
-                        AsyncImage(
-                            model = url,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                )
-            } else {
-                AsyncImage(
-                    model = url, contentDescription = null,
-                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
-                )
-            }
+        val edgeDp = maxOf(
+            maxWidth.value.takeIf { it.isFinite() } ?: 0f,
+            maxHeight.value.takeIf { it.isFinite() } ?: 0f
+        )
+        val decodeSize = if (edgeDp > 0f) {
+            (edgeDp * density.density * 1.35f).toInt().coerceIn(192, decodeCap)
+        } else decodeCap
+        if (candidates.isNotEmpty()) {
+            HighQualityArtworkCandidate(
+                candidates = candidates,
+                index = 0,
+                decodeSizePx = decodeSize,
+                modifier = Modifier.fillMaxSize()
+            )
         } else {
             Icon(Icons.Filled.MusicNote, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -3,6 +3,7 @@ package com.deepecho.mobile.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -48,7 +49,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -159,42 +159,102 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
     }
 
     LazyColumn(contentPadding = PaddingValues(bottom = 18.dp)) {
-        item {
-            Column(Modifier.padding(16.dp, 20.dp, 16.dp, 8.dp)) {
+        item(key = "premium-home-header-v1129") {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        greeting,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, "Settings", tint = MaterialTheme.colorScheme.onBackground)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "DeepEcho",
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            greeting,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f))
+                            .clickable(onClick = onOpenSearch),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.Search, "Search", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f))
+                            .clickable(onClick = onOpenSettings),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
-                Text(
-                    QuoteDeck.current(),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
-                Text(
-                    "Tumhare taste ke hisaab se aaj ka DeepEcho",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
-                Spacer(Modifier.size(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = onOpenSearch) {
-                        Icon(Icons.Filled.Search, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Search songs")
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .62f))
+                            .clickable { Settings.setSmartAutoplay(!smartAutoplay) }
+                            .padding(horizontal = 14.dp, vertical = 9.dp)
+                    ) {
+                        Text(
+                            if (smartAutoplay) "Smart Autoplay • ON" else "Smart Autoplay • OFF",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (smartAutoplay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Spacer(Modifier.weight(1f))
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Smart Autoplay", style = MaterialTheme.typography.labelMedium)
-                        Switch(checked = smartAutoplay, onCheckedChange = { Settings.setSmartAutoplay(it) })
+                    Text(
+                        QuoteDeck.current(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        item(key = "premium-mood-v1129") {
+            Column(Modifier.padding(top = 8.dp)) {
+                Text(
+                    "MOOD AND VIBES",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item(key = "auto-vibe") {
+                        PremiumMoodChipV1129(
+                            label = "For You",
+                            selected = selectedMood == null,
+                            onClick = { ExperienceV1128.setMood(null) }
+                        )
+                    }
+                    itemsIndexed(moods, key = { _, mood -> mood }) { _, mood ->
+                        PremiumMoodChipV1129(
+                            label = mood,
+                            selected = selectedMood == mood,
+                            onClick = { ExperienceV1128.setMood(if (selectedMood == mood) null else mood) }
+                        )
                     }
                 }
             }
@@ -205,39 +265,6 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
                 RecentTopTenHero(history)
             }
             item(key = "listening-session-v1128") { ListeningSessionCardV1128() }
-        }
-
-        item {
-            Column(Modifier.padding(top = 2.dp)) {
-                Text(
-                    "Pick your vibe",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    itemsIndexed(moods, key = { _, mood -> mood }) { _, mood ->
-                        FilterChip(
-                            selected = selectedMood == mood,
-                            onClick = { ExperienceV1128.setMood(if (selectedMood == mood) null else mood) },
-                            label = { Text(mood, style = MaterialTheme.typography.labelSmall) },
-                            modifier = Modifier.height(32.dp)
-                        )
-                    }
-                    item(key = "clear-vibe") {
-                        FilterChip(
-                            selected = selectedMood == null,
-                            onClick = { ExperienceV1128.setMood(null) },
-                            label = { Text("Auto", style = MaterialTheme.typography.labelSmall) },
-                            modifier = Modifier.height(32.dp)
-                        )
-                    }
-                }
-            }
         }
 
         selectedMood?.let { mood ->
@@ -290,32 +317,164 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
 }
 
 @Composable
+private fun PremiumMoodChipV1129(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .68f)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 11.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun PremiumHomeSectionTitleV1129(title: String, subtitle: String? = null) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            title.uppercase(),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun RecentTopTenHero(songs: List<Song>) {
     val recent = remember(songs) { songs.distinctBy { it.url }.take(10) }
     if (recent.isEmpty()) return
+    val hero = recent.first()
+    var heroActions by remember(hero.url) { mutableStateOf(false) }
 
-    Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-        Text(
-            "Recently played",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    Column(Modifier.padding(top = 4.dp, bottom = 8.dp)) {
+        PremiumHomeSectionTitleV1129(
+            title = "Recently played",
+            subtitle = "Pick up where you left off"
         )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(278.dp)
+                .clip(RoundedCornerShape(26.dp))
+                .combinedClickable(
+                    onClick = { PlayerClient.playDiscovery(hero) },
+                    onLongClick = { heroActions = true }
+                )
         ) {
-            itemsIndexed(recent, key = { _, song -> "recent-big-${song.url}" }) { _, song ->
-                Box(
-                    Modifier
-                        .width(220.dp)
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(24.dp))
-                        .clickable { PlayerClient.playDiscovery(song) }
-                ) {
-                    // Cover-only hero, as requested. The entire artwork is the play target.
-                    Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(24.dp))
+            Art(hero.thumb, Modifier.fillMaxSize(), RoundedCornerShape(26.dp))
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(54.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = .80f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    "Play",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = .86f))
+                    .padding(horizontal = 16.dp, vertical = 13.dp)
+            ) {
+                Text(
+                    hero.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    hero.artist,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (heroActions) SongActionsSheet(hero, onDismiss = { heroActions = false })
+
+        if (recent.size > 1) {
+            Text(
+                "KEEP LISTENING",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                itemsIndexed(recent.drop(1), key = { _, song -> "recent-premium-${song.url}" }) { _, song ->
+                    var showActions by remember(song.url) { mutableStateOf(false) }
+                    Column(Modifier.width(160.dp)) {
+                        Box(
+                            Modifier
+                                .size(160.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .combinedClickable(
+                                    onClick = { PlayerClient.playDiscovery(song) },
+                                    onLongClick = { showActions = true }
+                                )
+                        ) {
+                            Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(18.dp))
+                            Box(
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = .76f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, "Play", modifier = Modifier.size(24.dp))
+                            }
+                        }
+                        Text(
+                            song.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(top = 7.dp)
+                        )
+                        Text(
+                            song.artist,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
                 }
             }
         }
@@ -331,13 +490,7 @@ private fun SpeedDialShelf(history: List<Song>, liked: List<Song>) {
 
     val columns = remember(dial) { dial.chunked(3) }
     Column(Modifier.padding(top = 22.dp)) {
-        Text(
-            "Speed dial",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        PremiumHomeSectionTitleV1129("Speed dial", "Your quickest way back to favorites")
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -345,17 +498,27 @@ private fun SpeedDialShelf(history: List<Song>, liked: List<Song>) {
             itemsIndexed(columns, key = { index, _ -> "speed-column-$index" }) { _, group ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     group.forEach { song ->
+                        var showActions by remember(song.url) { mutableStateOf(false) }
                         Row(
                             Modifier
-                                .width(252.dp)
-                                .height(72.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .width(264.dp)
+                                .height(76.dp)
+                                .clip(RoundedCornerShape(18.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
                                 .clickable { PlayerClient.playDiscovery(song) }
-                                .padding(6.dp),
+                                .padding(7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Art(song.thumb, Modifier.size(60.dp), RoundedCornerShape(10.dp))
+                            Art(
+                                song.thumb,
+                                Modifier
+                                    .size(62.dp)
+                                    .combinedClickable(
+                                        onClick = { PlayerClient.playDiscovery(song) },
+                                        onLongClick = { showActions = true }
+                                    ),
+                                RoundedCornerShape(13.dp)
+                            )
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
@@ -380,6 +543,7 @@ private fun SpeedDialShelf(history: List<Song>, liked: List<Song>) {
                                 modifier = Modifier.size(23.dp)
                             )
                         }
+                        if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
                     }
                 }
             }
@@ -403,28 +567,23 @@ private fun LivePerformancesShelf(query: String) {
     if (songs.isEmpty()) return
 
     Column(Modifier.padding(top = 24.dp, bottom = 18.dp)) {
-        Text(
-            "Live performances",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        PremiumHomeSectionTitleV1129("Live performances", "Big-stage energy picked around your taste")
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             itemsIndexed(songs, key = { _, song -> "live-${song.url}" }) { _, song ->
-                Column(
-                    Modifier
-                        .width(260.dp)
-                        .clickable { PlayerClient.playDiscovery(song) }
-                ) {
+                var showActions by remember(song.url) { mutableStateOf(false) }
+                Column(Modifier.width(270.dp)) {
                     Box(
                         Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f)
-                            .clip(RoundedCornerShape(18.dp))
+                            .clip(RoundedCornerShape(20.dp))
+                            .combinedClickable(
+                                onClick = { PlayerClient.playDiscovery(song) },
+                                onLongClick = { showActions = true }
+                            )
                     ) {
                         Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(18.dp))
                         Box(
@@ -459,6 +618,7 @@ private fun LivePerformancesShelf(query: String) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
             }
         }
     }
@@ -482,97 +642,73 @@ private fun TasteShelf(mix: HomeMix) {
 @Composable
 private fun Shelf(title: String, songs: List<Song>, prewarmCount: Int = 1) {
     val blockedArtists by Settings.blockedArtists.collectAsState()
-    val visibleSongs = remember(songs, blockedArtists) { songs.filterNot { song -> blockedArtists.any { it.equals(song.artist, true) } } }
-    val liked by Store.liked.collectAsState()
-    val downloads by Store.downloads.collectAsState()
-    val downloadProgress by Downloads.progress.collectAsState()
+    val visibleSongs = remember(songs, blockedArtists) {
+        songs.filterNot { song -> blockedArtists.any { it.equals(song.artist, true) } }
+    }
 
     LaunchedEffect(visibleSongs.firstOrNull()?.url, prewarmCount) {
         if (prewarmCount > 0 && visibleSongs.isNotEmpty()) PlayerClient.prewarm(visibleSongs, prewarmCount)
     }
 
-    Column(Modifier.padding(top = 16.dp)) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(Modifier.size(8.dp))
+    Column(Modifier.padding(top = 18.dp)) {
+        PremiumHomeSectionTitleV1129(title)
         if (visibleSongs.isEmpty()) {
-            Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+            Text(
+                "Loading…",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
         } else {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                itemsIndexed(visibleSongs, key = { i, song -> "${song.url}#$i" }) { _, song ->
+                itemsIndexed(visibleSongs, key = { i, song -> "premium-home-${song.url}#$i" }) { _, song ->
                     var showActions by remember(song.url) { mutableStateOf(false) }
-                    val isLiked = liked.any { it.url == song.url }
-                    val downloaded = downloads.any { it.song.url == song.url }
-                    val progress = downloadProgress[song.url]
-
-                    Column(Modifier.width(140.dp)) {
-                        Column(Modifier.clickable { PlayerClient.playDiscovery(song) }) {
-                            Art(song.thumb, Modifier.size(140.dp))
-                            Text(
-                                song.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(top = 6.dp)
-                            )
-                            Text(
-                                song.artist,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    Column(Modifier.width(166.dp)) {
+                        Box(
+                            Modifier
+                                .size(166.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .combinedClickable(
+                                    onClick = { PlayerClient.playDiscovery(song) },
+                                    onLongClick = { showActions = true }
+                                )
                         ) {
-                            IconButton(onClick = { PlayerClient.addToQueue(song) }, modifier = Modifier.size(34.dp)) {
-                                Icon(Icons.Filled.QueueMusic, "Add to queue", modifier = Modifier.size(19.dp), tint = MaterialTheme.colorScheme.primary)
-                            }
-                            if (progress != null) {
-                                Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                }
-                            } else {
-                                IconButton(
-                                    onClick = {
-                                        if (downloaded) Store.removeDownload(song.url) else Downloads.start(song)
-                                    },
-                                    modifier = Modifier.size(34.dp)
-                                ) {
-                                    Icon(
-                                        if (downloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
-                                        if (downloaded) "Downloaded" else "Download",
-                                        modifier = Modifier.size(19.dp),
-                                        tint = if (downloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            IconButton(onClick = { Store.toggleLike(song) }, modifier = Modifier.size(34.dp)) {
+                            Art(song.thumb, Modifier.fillMaxSize(), RoundedCornerShape(18.dp))
+                            Box(
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Icon(
-                                    if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                    if (isLiked) "Unlike" else "Like",
-                                    modifier = Modifier.size(19.dp),
-                                    tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    Icons.Filled.PlayArrow,
+                                    "Play",
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
-                            IconButton(onClick = { showActions = true }, modifier = Modifier.size(34.dp)) {
-                                Icon(Icons.Filled.MoreVert, "More", modifier = Modifier.size(19.dp))
-                            }
                         }
-                        if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
+                        Text(
+                            song.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Text(
+                            song.artist,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                    if (showActions) SongActionsSheet(song, onDismiss = { showActions = false })
                 }
             }
         }
@@ -591,8 +727,42 @@ private fun HomePlaylistShelf(query: String, onOpen: (RemotePlaylist) -> Unit) {
             value = loaded
         }
     }
-    if (lists.isNotEmpty()) {
-        PlaylistShelf("Playlists for you", lists, onOpen)
+    if (lists.isEmpty()) return
+
+    Column(Modifier.padding(top = 20.dp)) {
+        PremiumHomeSectionTitleV1129("Playlists for you", "Personalized collections around your listening")
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            itemsIndexed(lists, key = { i, playlist -> "home-playlist-${playlist.url}#$i" }) { _, playlist ->
+                Column(
+                    Modifier
+                        .width(174.dp)
+                        .clickable { onOpen(playlist) }
+                ) {
+                    Art(playlist.thumb, Modifier.size(174.dp), RoundedCornerShape(20.dp))
+                    Text(
+                        playlist.title,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        buildString {
+                            append(playlist.uploader)
+                            if (playlist.songCount > 0) append(" • ${playlist.songCount} songs")
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -601,14 +771,8 @@ private fun TopArtistsShelf(artists: List<TopArtist>, onArtist: (TopArtist) -> U
     val blocked by Settings.blockedArtists.collectAsState()
     val visibleArtists = remember(artists, blocked) { artists.filterNot { a -> blocked.any { it.equals(a.name, true) } } }
     Column(Modifier.padding(top = 20.dp, bottom = 12.dp)) {
-        Text(
-            "Top Artists",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(Modifier.size(10.dp))
+        PremiumHomeSectionTitleV1129("Top artists", "Artists DeepEcho thinks you want next")
+        Spacer(Modifier.size(2.dp))
         if (visibleArtists.isEmpty()) {
             Text(
                 "Thoda aur suno — tumhare Top Artists yahan banenge.",

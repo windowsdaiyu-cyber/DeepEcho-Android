@@ -29,6 +29,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,6 +39,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -157,10 +160,16 @@ fun App() {
                     contentColor = MaterialTheme.colorScheme.onBackground,
                     bottomBar = {
                         Column {
-                            MiniPlayer { showPlayer = true }
+                            val premiumHomeShell = tab == 0 && !showSettings
+                            MiniPlayer(onClick = { showPlayer = true }, floating = premiumHomeShell)
                             NavigationBar(
+                                modifier = if (premiumHomeShell) {
+                                    Modifier
+                                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                                        .clip(RoundedCornerShape(34.dp))
+                                } else Modifier,
                                 containerColor = MaterialTheme.colorScheme.surface.copy(
-                                    alpha = if (theme == "Ruby") 0.68f else 0.96f
+                                    alpha = if (theme == "Ruby") 0.68f else if (premiumHomeShell) 0.90f else 0.96f
                                 )
                             ) {
                                 val items = listOf(
@@ -173,7 +182,7 @@ fun App() {
                                         selected = tab == i,
                                         onClick = { tab = i },
                                         icon = { Icon(icon, label) },
-                                        label = { Text(label) }
+                                        label = if (premiumHomeShell && tab != i) null else { { Text(label) } }
                                     )
                                 }
                             }

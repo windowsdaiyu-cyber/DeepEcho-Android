@@ -372,7 +372,7 @@ private fun ThemeActionBurst(
 // ───────────────────────── MINI PLAYER ─────────────────────────
 
 @Composable
-fun MiniPlayer(onClick: () -> Unit) {
+fun MiniPlayer(onClick: () -> Unit, floating: Boolean = false) {
     val theme by Settings.theme.collectAsState()
     val song = PlayerClient.currentSong ?: return
     val dur = (if (PlayerClient.durationMs > 0) PlayerClient.durationMs else song.durationSec * 1000).coerceAtLeast(1)
@@ -387,10 +387,16 @@ fun MiniPlayer(onClick: () -> Unit) {
     var swipeX by remember(song.url) { mutableFloatStateOf(0f) }
     var swipeY by remember(song.url) { mutableFloatStateOf(0f) }
     Column(
-        Modifier.fillMaxWidth()
+        Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = if (floating) 16.dp else 0.dp,
+                vertical = if (floating) 4.dp else 0.dp
+            )
+            .clip(if (floating) RoundedCornerShape(32.dp) else RoundedCornerShape(0.dp))
             .background(
                 MaterialTheme.colorScheme.surface.copy(
-                    alpha = if (theme == "Ruby") 0.72f else 1f
+                    alpha = if (theme == "Ruby") 0.72f else if (floating) 0.94f else 1f
                 )
             )
             .pointerInput(song.url) {
@@ -414,8 +420,15 @@ fun MiniPlayer(onClick: () -> Unit) {
             }
             .clickable(onClick = onClick)
     ) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Art(song.thumb, Modifier.size(42.dp), RoundedCornerShape(8.dp))
+        Row(
+            Modifier.padding(horizontal = if (floating) 12.dp else 10.dp, vertical = if (floating) 8.dp else 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Art(
+                song.thumb,
+                Modifier.size(if (floating) 48.dp else 42.dp),
+                if (floating) CircleShape else RoundedCornerShape(8.dp)
+            )
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -447,13 +460,19 @@ fun MiniPlayer(onClick: () -> Unit) {
             }
             if (PlayerClient.buffering) {
                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+            } else if (floating) {
+                FilledIconButton(onClick = { PlayerClient.toggle() }, modifier = Modifier.size(48.dp)) {
+                    Icon(if (PlayerClient.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Play/Pause")
+                }
             } else {
                 IconButton(onClick = { PlayerClient.toggle() }) {
                     Icon(if (PlayerClient.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Play/Pause")
                 }
             }
-            IconButton(onClick = { PlayerClient.seekBy(10_000) }) {
-                Icon(Icons.Filled.Forward10, "Forward 10 seconds")
+            if (!floating) {
+                IconButton(onClick = { PlayerClient.seekBy(10_000) }) {
+                    Icon(Icons.Filled.Forward10, "Forward 10 seconds")
+                }
             }
             IconButton(onClick = { PlayerClient.next() }) {
                 Icon(Icons.Filled.SkipNext, "Next")
@@ -1409,15 +1428,11 @@ fun PlayerScreen(onClose: () -> Unit) {
         }
 
         PlayerModeSelectorV1128(playerMode) { requested ->
-            if (requested == PlayerModeV1128.Ambient) {
-                playerMode = PlayerModeV1128.Ambient
-                ambientMode = true
-                Settings.setAmbientMode(true)
-            } else {
-                ambientMode = false
-                Settings.setAmbientMode(false)
-                playerMode = requested
-            }
+            // v1.12.10: Ambient is switch-only. Selecting Artwork/Lyrics/Minimal must not
+            // create or toggle a second Ambient entry point.
+            ambientMode = false
+            Settings.setAmbientMode(false)
+            playerMode = requested
         }
 
         // Phone-safe Ambient control: the older layout exposed Ambient only in the
@@ -1448,8 +1463,8 @@ fun PlayerScreen(onClose: () -> Unit) {
                     checked = ambientMode,
                     onCheckedChange = { enabled ->
                         ambientMode = enabled
-                        if (enabled) playerMode = PlayerModeV1128.Ambient
-                        else if (playerMode == PlayerModeV1128.Ambient) playerMode = PlayerModeV1128.Artwork
+                        // Ambient is entered only through this switch; keep the visible
+                        // presentation mode intact while the fullscreen Ambient surface is active.
                         Settings.setAmbientMode(enabled)
                         if (!enabled) ambientVideo = false
                     },

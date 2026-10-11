@@ -30,7 +30,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -76,56 +75,67 @@ fun DailyMixesV1128(onOpen: (PersonalMixSpec) -> Unit) {
     if (mixes.isEmpty()) return
     val scope = rememberCoroutineScope()
 
-    Column(Modifier.padding(top = 20.dp)) {
+    Column(Modifier.padding(top = 22.dp)) {
         Text(
-            "Your Daily Mixes",
+            "YOUR DAILY MIXES",
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.ExtraBold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
         Text(
-            "Built from your local taste, recent listening and current mood context",
+            "Made from your recent listening, likes and current vibe",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             items(mixes, key = { it.title + it.query }) { mix ->
                 Card(
-                    modifier = Modifier.width(238.dp).height(174.dp).clickable { onOpen(mix) },
-                    shape = RoundedCornerShape(22.dp),
+                    modifier = Modifier.width(184.dp).clickable { onOpen(mix) },
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .62f)
                     )
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Art(mix.seedThumb, Modifier.size(58.dp), RoundedCornerShape(16.dp))
-                        Spacer(Modifier.width(11.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(mix.title, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(mix.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Box(Modifier.fillMaxWidth().height(150.dp)) {
+                        Art(mix.seedThumb, Modifier.fillMaxSize(), RoundedCornerShape(20.dp))
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(10.dp)
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(21.dp))
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = .88f))
+                                .clickable {
+                                    scope.launch {
+                                        val songs = loadPersonalMix(mix)
+                                        if (songs.isEmpty()) Bus.toast("Mix abhi load nahi ho paaya")
+                                        else PlayerClient.playSongs(songs, 0)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, "Play mix", tint = MaterialTheme.colorScheme.onSurface)
                         }
                     }
-                    Spacer(Modifier.weight(1f))
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    val songs = loadPersonalMix(mix)
-                                    if (songs.isEmpty()) Bus.toast("Mix abhi load nahi ho paaya")
-                                    else PlayerClient.playSongs(songs, 0)
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Filled.PlayArrow, null)
-                            Spacer(Modifier.width(5.dp))
-                            Text("Play")
-                        }
-                        OutlinedButton(onClick = { onOpen(mix) }, modifier = Modifier.weight(1f)) { Text("Open") }
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        Text(
+                            mix.title,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            mix.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
                 }
             }

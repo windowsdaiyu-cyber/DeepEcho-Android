@@ -437,7 +437,7 @@ fun SettingsScreen(onBack: (() -> Unit)? = null) {
         item {
             Text(
                 "DEEP-ECHO Mobile 1.12.8 TEST • Visible UX / Player Experience upgrade adds Daily Mixes, Mood context, " +
-                    "five player presentation modes, Quick Settings tiles, share cards, Quick Actions feedback, dynamic artwork accents, " +
+                    "three focused player presentation modes, switch-only Ambient, Quick Settings tiles, share cards, Quick Actions feedback, dynamic artwork accents, " +
                     "Mini Player lyrics, session insights, optional notification lyrics and Continue Your Vibe. Existing playback, lyrics, downloads and Smart Autoplay remain the authority.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
