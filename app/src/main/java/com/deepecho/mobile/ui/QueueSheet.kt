@@ -34,15 +34,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.deepecho.mobile.data.Settings
 import com.deepecho.mobile.player.PlayerClient
 
 @Composable
 fun UpNextDialog(onDismiss: () -> Unit) {
     val revision = PlayerClient.queueRevision
     val entries = remember(revision) { PlayerClient.queueSnapshot() }
-    val upcomingCount = entries.count { !it.current }
-    val smartAutoplay = Settings.smartAutoplay.value
+    val manualEntries = entries.filterNot { it.current }
+    val upcomingCount = manualEntries.size
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -54,7 +53,7 @@ fun UpNextDialog(onDismiss: () -> Unit) {
                     Text("Queue", fontWeight = FontWeight.Bold)
                 }
                 Text(
-                    "$upcomingCount upcoming • Smart Autoplay ${if (smartAutoplay) "ON" else "OFF"}",
+                    "$upcomingCount manually queued • Smart Autoplay runs separately",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -71,22 +70,25 @@ fun UpNextDialog(onDismiss: () -> Unit) {
                     items(entries, key = { "${it.song.url}#${it.index}" }) { entry ->
                         var drag by remember(entry.song.url, entry.index) { mutableFloatStateOf(0f) }
 
+                        val manualPosition = manualEntries.indexOfFirst { it.index == entry.index }
                         Row(
                             Modifier.fillMaxWidth()
-                                .pointerInput(entry.index, entries.size) {
-                                    detectVerticalDragGestures(
-                                        onVerticalDrag = { _, amount -> drag += amount },
-                                        onDragEnd = {
-                                            when {
-                                                drag > 42f && entry.index < entries.lastIndex ->
-                                                    PlayerClient.moveQueueItem(entry.index, entry.index + 1)
-                                                drag < -42f && entry.index > 0 ->
-                                                    PlayerClient.moveQueueItem(entry.index, entry.index - 1)
-                                            }
-                                            drag = 0f
-                                        },
-                                        onDragCancel = { drag = 0f }
-                                    )
+                                .pointerInput(entry.index, manualEntries.size) {
+                                    if (!entry.current && manualPosition >= 0) {
+                                        detectVerticalDragGestures(
+                                            onVerticalDrag = { _, amount -> drag += amount },
+                                            onDragEnd = {
+                                                when {
+                                                    drag > 42f && manualPosition < manualEntries.lastIndex ->
+                                                        PlayerClient.moveQueueItem(entry.index, manualEntries[manualPosition + 1].index)
+                                                    drag < -42f && manualPosition > 0 ->
+                                                        PlayerClient.moveQueueItem(entry.index, manualEntries[manualPosition - 1].index)
+                                                }
+                                                drag = 0f
+                                            },
+                                            onDragCancel = { drag = 0f }
+                                        )
+                                    }
                                 }
                                 .clickable(enabled = !entry.current) {
                                     PlayerClient.playQueueItem(entry.index)

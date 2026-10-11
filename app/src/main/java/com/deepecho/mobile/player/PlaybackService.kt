@@ -19,6 +19,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -67,16 +68,22 @@ class PlaybackService : MediaSessionService() {
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15_000,
-                50_000,
-                700,
-                1_400
+                10_000,
+                45_000,
+                PlaybackSeekPolicy.START_OR_SEEK_BUFFER_MS,
+                1_000
             )
+            // Keep a small recent tail in memory so short backward scrubs can resume
+            // without another network range request. This does not increase startup wait.
+            .setBackBuffer(PlaybackSeekPolicy.BACK_BUFFER_MS, true)
             .build()
 
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataFactory))
             .setLoadControl(loadControl)
+            // Scrubbing is a user action: prefer the nearest sync point so remote M4A
+            // streams can resume with less extractor discard work.
+            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)

@@ -33,7 +33,11 @@ object LyricsRuntimeSync {
     ): Long {
         val raw = rawPositionMs.coerceAtLeast(0L)
         if (!LyricsFeatureFlags.runtimeVocalOnsetGuard) return raw
-        val knownOnset = lyrics.firstVocalOnsetMs
+        val knownOnset = lyrics.firstVocalOnsetMs ?: if (!lyrics.estimatedSync) {
+            lyrics.synced.firstOrNull { line ->
+                line.text.trim().let { it.isNotBlank() && it != "♪" }
+            }?.timeMs
+        } else null
         if (knownOnset != null && raw + 80L < knownOnset) return -1L
 
         // Caption/audio aligned timing already contains real timeline anchors. Don't double-shift.

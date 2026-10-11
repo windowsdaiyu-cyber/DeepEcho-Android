@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -90,6 +89,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -747,9 +747,15 @@ private fun AmbientLyricsPane(song: Song, modifier: Modifier = Modifier) {
                     if (synced.isNotEmpty()) {
                         val idx = if (position < 0L) -1 else synced.indexOfLast { it.timeMs <= position }
                         currentLine = synced.getOrNull(idx)
-                        rawCurrent = currentLine?.text ?: synced.firstOrNull()?.text.orEmpty()
-                        rawNext = if (idx < 0) synced.getOrNull(1)?.text.orEmpty() else synced.getOrNull(idx + 1)?.text.orEmpty()
-                        rawAfter = if (idx < 0) synced.getOrNull(2)?.text.orEmpty() else synced.getOrNull(idx + 2)?.text.orEmpty()
+                        if (position < 0L) {
+                            rawCurrent = "♪ Instrumental intro"
+                            rawNext = ""
+                            rawAfter = ""
+                        } else {
+                            rawCurrent = currentLine?.text ?: synced.firstOrNull()?.text.orEmpty()
+                            rawNext = synced.getOrNull(idx + 1)?.text.orEmpty()
+                            rawAfter = synced.getOrNull(idx + 2)?.text.orEmpty()
+                        }
                         currentLineEnd = if (idx >= 0) {
                             synced.getOrNull(idx + 1)?.timeMs
                                 ?: ((currentLine?.timeMs ?: rawPosition) + estimatedLineDurationMs(rawCurrent))
@@ -1368,7 +1374,6 @@ fun PlayerScreen(onClose: () -> Unit) {
     var gestureY by remember(song?.url) { mutableFloatStateOf(0f) }
     var likeBurst by remember(song?.url) { mutableIntStateOf(0) }
     var downloadBurst by remember(song?.url) { mutableIntStateOf(0) }
-    var ambientVideo by remember(song?.url) { mutableStateOf(false) }
     var showSongActions by remember(song?.url) { mutableStateOf(false) }
     val suggestedTheme = PlayerClient.currentSuggestedTheme ?: remember(song?.url) { song?.let(ThemeAdvisor::suggest) }
     val queueRevision = PlayerClient.queueRevision
@@ -1410,6 +1415,8 @@ fun PlayerScreen(onClose: () -> Unit) {
     }
 
     AmbientImmersiveWindow(false)
+    val artworkScroll = rememberScrollState()
+    val largeArtworkLayout = playerMode == PlayerModeV1128.Artwork
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AmbientPlayerBackdrop(Modifier.fillMaxSize())
         ArtworkDynamicBackdropV1128(song, Modifier.fillMaxSize())
@@ -1418,6 +1425,7 @@ fun PlayerScreen(onClose: () -> Unit) {
                 .pointerInput(Unit) { detectTapGestures { } }
                 .statusBarsPadding().navigationBarsPadding()
                 .padding(horizontal = 20.dp)
+                .then(if (largeArtworkLayout) Modifier.verticalScroll(artworkScroll) else Modifier)
         ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.KeyboardArrowDown, "Close", Modifier.size(32.dp)) }
@@ -1428,51 +1436,16 @@ fun PlayerScreen(onClose: () -> Unit) {
         }
 
         PlayerModeSelectorV1128(playerMode) { requested ->
-            // v1.12.10: Ambient is switch-only. Selecting Artwork/Lyrics/Minimal must not
-            // create or toggle a second Ambient entry point.
-            ambientMode = false
-            Settings.setAmbientMode(false)
-            playerMode = requested
-        }
-
-        // Phone-safe Ambient control: the older layout exposed Ambient only in the
-        // artwork-only action row. On real phones that made the control disappear as
-        // soon as Lyrics was open even though larger emulator layouts looked fine.
-        // Keep this small row outside the lyrics viewport so it is always reachable
-        // while viewing lyrics. This changes UI only; playback/lyrics timing is untouched.
-        if (showLyrics) {
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 38.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End
-            ) {
-                Icon(
-                    Icons.Filled.AutoAwesome,
-                    "Ambient Mode",
-                    tint = if (ambientMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    "Ambient",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (ambientMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.width(4.dp))
-                Switch(
-                    checked = ambientMode,
-                    onCheckedChange = { enabled ->
-                        ambientMode = enabled
-                        // Ambient is entered only through this switch; keep the visible
-                        // presentation mode intact while the fullscreen Ambient surface is active.
-                        Settings.setAmbientMode(enabled)
-                        if (!enabled) ambientVideo = false
-                    },
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = 0.72f
-                        scaleY = 0.72f
-                    }
-                )
+            if (requested == PlayerModeV1128.Ambient) {
+                // v1.12.11: Ambient is entered from the boxed mode chip beside Minimal.
+                // The fullscreen Ambient screen itself keeps the only Ambient switch.
+                playerMode = PlayerModeV1128.Ambient
+                ambientMode = true
+                Settings.setAmbientMode(true)
+            } else {
+                ambientMode = false
+                Settings.setAmbientMode(false)
+                playerMode = requested
             }
         }
 
@@ -1511,8 +1484,11 @@ fun PlayerScreen(onClose: () -> Unit) {
                 }
         } else Modifier
 
+        val playerStageModifier = Modifier.fillMaxWidth().then(stageGestureModifier).let { base ->
+            if (largeArtworkLayout) base else base.weight(1f)
+        }
         Box(
-            Modifier.weight(1f).fillMaxWidth().then(stageGestureModifier),
+            playerStageModifier,
             contentAlignment = Alignment.Center
         ) {
             if (song == null) {
@@ -1527,15 +1503,39 @@ fun PlayerScreen(onClose: () -> Unit) {
                         )
                         PlayerModeV1128.Visualizer -> VisualizerModeV1128(song, Modifier.fillMaxSize())
                         PlayerModeV1128.Minimal -> MinimalModeV1128(song, Modifier.fillMaxSize())
-                        PlayerModeV1128.Ambient, PlayerModeV1128.Artwork ->
-                            Art(song.thumb, Modifier.fillMaxWidth().aspectRatio(1f), RoundedCornerShape(20.dp))
+                        PlayerModeV1128.Artwork -> BoxWithConstraints(
+                            Modifier.fillMaxWidth().clipToBounds(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // v1.12.12: Artwork gets the phone width again instead of shrinking to
+                            // whatever height remains after controls. The whole Artwork surface can
+                            // scroll on short phones, so metadata/actions stay below and never overlap.
+                            val artworkEdge = minOf(maxWidth, 392.dp)
+                            Box(
+                                Modifier.fillMaxWidth().height(artworkEdge),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Art(
+                                    song.thumb,
+                                    Modifier.size(artworkEdge).padding(vertical = 2.dp),
+                                    RoundedCornerShape(22.dp)
+                                )
+                            }
+                        }
+                        PlayerModeV1128.Ambient -> BoxWithConstraints(
+                            Modifier.fillMaxSize().clipToBounds(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val artworkEdge = minOf(maxWidth, maxHeight)
+                            Art(song.thumb, Modifier.size(artworkEdge), RoundedCornerShape(22.dp))
+                        }
                     }
                 }
             }
         }
 
         if (song != null) {
-            Spacer(Modifier.size(if (showLyrics) 5.dp else if (ambientMode) 8.dp else 14.dp))
+            Spacer(Modifier.height(if (showLyrics) 6.dp else 10.dp))
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -1617,31 +1617,7 @@ fun PlayerScreen(onClose: () -> Unit) {
                         Text("About Artist", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
 
-                    Row(
-                        Modifier.weight(0.92f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Icon(
-                            Icons.Filled.AutoAwesome,
-                            "Ambient Mode",
-                            tint = if (ambientMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Switch(
-                            checked = ambientMode,
-                            onCheckedChange = { enabled ->
-                                ambientMode = enabled
-                                Settings.setAmbientMode(enabled)
-                                if (!enabled) ambientVideo = false
-                            },
-                            modifier = Modifier.graphicsLayer {
-                                scaleX = 0.78f
-                                scaleY = 0.78f
-                            }
-                        )
-                    }
+                    Spacer(Modifier.weight(0.92f))
                 }
             }
         }

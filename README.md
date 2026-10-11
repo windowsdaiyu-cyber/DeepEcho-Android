@@ -1,36 +1,31 @@
-# DEEP-ECHO Mobile v1.12.10 — Artwork + Player Cleanup Test Line
+# DEEP-ECHO Mobile v1.12.14 — Manual Queue + Hidden Smart Autoplay Test
 
-This build is based directly on the successfully compiling v1.12.9 Premium Home source.
+Built on the v1.12.13 Fast Lyrics + Vocal Sync line without replacing playback, lyrics, downloads, themes, Home/Search or artwork systems.
 
 ## What changed
 
-- Full Player mode row now exposes only **Artwork**, **Lyrics** and **Minimal**.
-- **Visualizer** is no longer a visible player mode. Its internal audio-reactive support remains available for existing features such as Floating Lyrics.
-- **Ambient** is no longer a visible player mode. Ambient remains available through the existing **Ambient switch** only.
-- Central `Art()` rendering now requests larger image decodes and promotes known YouTube/Google image-CDN URLs to higher-resolution artwork with graceful fallback.
-- The artwork improvement applies automatically to Full Player, Home, Search, mini-player, playlist/detail cards, song rows, artist surfaces, queue and other in-app surfaces that already use the shared `Art()` component.
-- Data Saver keeps its conservative artwork behavior instead of forcing high-resolution promotion.
+- Visible Queue now contains only the current-song context plus songs explicitly added with **Play Next** or **Add to Queue**.
+- Smart Autoplay recommendations use a separate hidden lane and never bulk-fill the visible Queue.
+- Manual queue playback has priority. Smart Autoplay continues only after intentional upcoming playback is exhausted.
+- Hidden autoplay is capped at 4 candidates and passively prewarms only the nearest 1 track.
+- Only the immediate autoplay-next item is inserted into Media3 when it is actually needed.
+- Long Smart Autoplay sessions keep a bounded Previous history instead of growing to 100+ media items.
+- New session/persistent queue data records whether an item was manually queued.
+- Legacy Smart-Autoplay session lookahead is not restored as a visible queue.
 
-## Protected systems
+## Build
 
-PlaybackService, PlayerClient, YouTube stream resolution, Downloads, SmartCache, PlaybackLookahead, lyrics retrieval/sync/OCR, Floating Lyrics service, Smart Autoplay/queue logic, Home recommendation logic and the theme implementation are intentionally unchanged.
+From the extracted project root, run:
 
-## Build on Windows
-
-Fresh-extract the ZIP and run this file from the **ROOT** of the project folder:
-
-`BUILD-TEST-APK-v1.12.10.bat`
-
-The builder runs unit tests and then assembles the signed debug APK using your existing permanent DeepEcho Android signing key.
+`BUILD-TEST-APK-v1.12.14.bat`
 
 Expected APK:
 
-`DEEP-ECHO-Mobile-v1.12.10-ARTWORK-PLAYER-CLEANUP-TEST.apk`
+`DEEP-ECHO-Mobile-v1.12.14-MANUAL-QUEUE-HIDDEN-AUTOPLAY-TEST.apk`
 
-## Quick emulator checklist
+## Test first
 
-1. Full Player top mode row should show only Artwork / Lyrics / Minimal.
-2. Ambient switch should still enter and exit Ambient normally.
-3. Test 3–5 songs with visibly different covers in Full Player, Home and Search; high-resolution artwork should replace low-resolution sources when available.
-4. Check mini-player, playlist/detail, queue and artist artwork.
-5. Regression-test Play/Pause, Next/Rapid Next, Previous, Seek, Queue, Downloads, Smart Autoplay, Lyrics, Word-by-Word, Romanized, Floating Lyrics, Exact Lyrics, themes, notification/lock screen and background playback.
+1. Play from Home/Search with Smart Autoplay ON and open Queue — random autoplay songs must not appear.
+2. Use Play Next and Add to Queue — only those manually added songs should appear as upcoming.
+3. Manual songs must play before Smart Autoplay continues.
+4. Retest Home/Search tap-to-play, rapid Next/Previous, seek, lyrics, Floating Lyrics, Downloads, themes and playlists.

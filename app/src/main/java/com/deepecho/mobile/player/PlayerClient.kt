@@ -54,11 +54,18 @@ object PlayerClient {
     private val songs = HashMap<String, Song>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var smartJob: Job? = null
+    private var smartDeferJob: Job? = null
     private var stableBackgroundJob: Job? = null
+    private var seekSettleJob: Job? = null
     private var smartContext = false
     private var tickerStarted = false
     private val warmSet = ConcurrentHashMap.newKeySet<String>()
     private val queueReasons = ConcurrentHashMap<String, String>()
+    // v1.12.14: visible Queue is manual-only. Smart Autoplay candidates stay internal.
+    private val manualQueueIds = ConcurrentHashMap.newKeySet<String>()
+    private val smartCandidates = mutableListOf<Song>()
+    private var smartCandidateSeedUrl: String? = null
+    private var smartAdvanceRequested = false
     private var sleepJob: Job? = null
     private var lastProgressiveSeekAt = 0L
     private var progressiveSeekLevel = 0
@@ -94,6 +101,7 @@ object PlayerClient {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             flushListeningStats()
             mediaItem?.mediaId?.let { songs[it] }?.let { song ->
+                manualQueueIds.remove(song.url)
                 queueRevision++
                 val restored = restoredSessionMediaId == song.url
                 if (restored) {
@@ -108,12 +116,19 @@ object PlayerClient {
                     if (Settings.autoThemeWithSong.value) {
                         Settings.setTheme(suggestion)
                     }
-                    if (smartContext) scheduleSmartQueue(song)
+                    if (smartContext) scheduleSmartQueueAfterPlaybackPriority(song)
                 }
                 persistSongSession(force = true)
-                controller?.let {
-                    refreshLookahead(it, "media-transition")
-                    scheduleStableBackgroundWork(it)
+                controller?.let { live ->
+                    if (smartContext) {
+                        smartJob?.cancel()
+                        smartCandidates.clear()
+                        smartCandidateSeedUrl = null
+                        smartAdvanceRequested = false
+                        trimSmartPlaybackHistory(live)
+                    }
+                    refreshLookahead(live, "media-transition")
+                    scheduleStableBackgroundWork(live)
                 }
             }
         }
@@ -123,7 +138,15 @@ object PlayerClient {
                 PlaybackPerfMetrics.audioReady(currentSong?.url)
             }
             if (playbackState == Player.STATE_ENDED && smartContext) {
-                currentSong?.let { scheduleSmartQueue(it, force = true) }
+                currentSong?.let { seed ->
+                    val live = controller
+                    if (live != null && smartCandidates.isNotEmpty()) {
+                        smartAdvanceRequested = false
+                        advanceFromManualOrSmart(live, seed)
+                    } else {
+                        scheduleSmartQueue(seed, force = true, advanceAfterAppend = true)
+                    }
+                }
             }
         }
 
@@ -286,6 +309,9 @@ object PlayerClient {
         if (list.isEmpty()) return
         smartContext = false
         smartJob?.cancel()
+        smartDeferJob?.cancel()
+        manualQueueIds.clear()
+        clearSmartCandidates()
         val safeIndex = index.coerceIn(0, list.lastIndex)
         val requested = list[safeIndex]
         PlaybackPerfMetrics.beginTrackAction("play-tap", requested.url)
@@ -309,6 +335,9 @@ object PlayerClient {
         smartContext = Settings.shufflePlaylistFirst.value &&
             Settings.enableSimilarContent.value && Settings.autoLoadMoreSongs.value
         smartJob?.cancel()
+        smartDeferJob?.cancel()
+        manualQueueIds.clear()
+        clearSmartCandidates()
         queueReasons.clear()
         shuffled.forEach { queueReasons[it.url] = "Shuffled from playlist / album" }
         PlaybackPerfMetrics.beginTrackAction("play-tap", shuffled.first().url)
@@ -321,7 +350,7 @@ object PlayerClient {
         Store.addHistory(shuffled.first())
         refreshLookahead(c, "shuffle-play")
         scheduleStableBackgroundWork(c)
-        if (smartContext) scheduleSmartQueue(shuffled.first(), force = true)
+        if (smartContext) scheduleSmartQueue(shuffled.first(), force = false)
     }
 
     /** Home/Search discovery: seed song only, then taste-aware queue is generated. */
@@ -329,6 +358,10 @@ object PlayerClient {
         val c = controller ?: run { Bus.toast("Player abhi connect ho raha hai, dobara try karo"); return }
         smartContext = true
         smartJob?.cancel()
+        smartDeferJob?.cancel()
+        stableBackgroundJob?.cancel()
+        manualQueueIds.clear()
+        clearSmartCandidates()
         // Give the user-triggered playback resolve first priority. Background warming
         // happens only for likely NEXT tracks, never for the song they just tapped.
         queueReasons.clear()
@@ -343,7 +376,28 @@ object PlayerClient {
         Store.addHistory(song)
         refreshLookahead(c, "discovery-play")
         scheduleStableBackgroundWork(c)
-        scheduleSmartQueue(song, force = true)
+        // Smart Autoplay is still enabled, but its recommendation network work waits until
+        // playback has either become READY or had a bounded head start. This keeps Home/Search
+        // tap-to-audio fast even on weak connections.
+        scheduleSmartQueueAfterPlaybackPriority(song)
+    }
+
+    private fun scheduleSmartQueueAfterPlaybackPriority(seed: Song) {
+        smartDeferJob?.cancel()
+        val expectedUrl = seed.url
+        smartDeferJob = scope.launch {
+            val started = SystemClock.elapsedRealtime()
+            while (isActive &&
+                smartContext &&
+                controller?.currentMediaItem?.mediaId == expectedUrl &&
+                controller?.playbackState != Player.STATE_READY &&
+                SystemClock.elapsedRealtime() - started < 4_000L
+            ) {
+                delay(80L)
+            }
+            if (!smartContext || controller?.currentMediaItem?.mediaId != expectedUrl) return@launch
+            scheduleSmartQueue(seed, force = false)
+        }
     }
 
     private fun advanceToNextAndPlay(c: Player) {
@@ -356,56 +410,102 @@ object PlayerClient {
         c.play()
     }
 
+
+    private fun trimSmartPlaybackHistory(c: MediaController) {
+        // Keep Previous useful, but never let hours of autoplay turn into a 100+ item Media3 list.
+        while (smartContext && c.currentMediaItemIndex > 6 && c.mediaItemCount > 7) {
+            val oldId = c.getMediaItemAt(0).mediaId
+            c.removeMediaItem(0)
+            manualQueueIds.remove(oldId)
+            queueReasons.remove(oldId)
+        }
+    }
+
+    private fun clearSmartCandidates() {
+        smartCandidates.clear()
+        smartCandidateSeedUrl = null
+        smartAdvanceRequested = false
+    }
+
+    /**
+     * Smart Autoplay has its own hidden lane. Recommendations are never bulk-appended to
+     * Media3's visible/manual queue. We keep only a tiny in-memory candidate set and warm
+     * at most the nearest candidate.
+     */
     private fun scheduleSmartQueue(
         seed: Song,
         force: Boolean = false,
         advanceAfterAppend: Boolean = false
     ) {
         if (!smartContext || !Settings.smartAutoplay.value ||
-            !Settings.enableSimilarContent.value || !Settings.autoLoadMoreSongs.value) return
-        val c = controller ?: return
-        val remaining = c.mediaItemCount - c.currentMediaItemIndex - 1
-        if (!force && remaining > 2) return
-
-        if (smartJob?.isActive == true) {
-            if (advanceAfterAppend) {
-                val activeJob = smartJob
-                scope.launch {
-                    activeJob?.join()
-                    controller?.let { live ->
-                        if (live.hasNextMediaItem()) advanceToNextAndPlay(live)
-                    }
-                }
-            }
+            !Settings.enableSimilarContent.value || !Settings.autoLoadMoreSongs.value) {
+            smartAdvanceRequested = false
             return
         }
+        val c = controller ?: return
+        if (advanceAfterAppend) smartAdvanceRequested = true
+
+        // Manual/playlist upcoming items always win. Hidden autoplay can wait until they finish.
+        if (!force && c.hasNextMediaItem()) return
+        if (!force && smartCandidateSeedUrl == seed.url && smartCandidates.size >= 2) return
+
+        if (smartJob?.isActive == true) return
 
         val excluded = buildSet {
             for (i in 0 until c.mediaItemCount) add(c.getMediaItemAt(i).mediaId)
+            smartCandidates.forEach { add(it.url) }
         }
         smartJob = scope.launch {
             val recs = withContext(Dispatchers.IO) {
-                runCatching { TasteEngine.smartNext(seed, excluded, 10) }.getOrDefault(emptyList())
+                runCatching { TasteEngine.smartNext(seed, excluded, 6) }.getOrDefault(emptyList())
             }
-            if (recs.isEmpty()) return@launch
             if (!smartContext || !Settings.smartAutoplay.value) return@launch
-            val live = controller ?: return@launch
-            val stillExcluded = buildSet {
-                for (i in 0 until live.mediaItemCount) add(live.getMediaItemAt(i).mediaId)
+            val fresh = recs
+                .filterNot { it.url in excluded || Settings.isArtistBlocked(it.artist) }
+                .distinctBy { it.url }
+                .take(QueueVisibilityPolicyV11214.autoplayCandidateLimit())
+            if (fresh.isNotEmpty()) {
+                if (smartCandidateSeedUrl != seed.url) smartCandidates.clear()
+                smartCandidateSeedUrl = seed.url
+                fresh.forEach { song ->
+                    if (smartCandidates.none { it.url == song.url }) smartCandidates += song
+                }
+                // One lightweight hidden prewarm only; never resolve a huge autoplay list.
+                PlaybackLookahead.passiveWarm(
+                    smartCandidates.take(QueueVisibilityPolicyV11214.autoplayPrewarmLimit()),
+                    QueueVisibilityPolicyV11214.autoplayPrewarmLimit(),
+                    "smart-autoplay-hidden"
+                )
             }
-            val fresh = recs.filterNot { it.url in stillExcluded || Settings.isArtistBlocked(it.artist) }.take(8)
-            if (fresh.isEmpty()) return@launch
-            fresh.forEach { queueReasons[it.url] = "Smart Autoplay • because of ${seed.artist.ifBlank { seed.title }}" }
-            live.addMediaItems(fresh.map { toItem(it) })
-            queueRevision++
-            refreshLookahead(live, "smart-autoplay-append")
 
-            if (advanceAfterAppend && live.hasNextMediaItem()) {
-                advanceToNextAndPlay(live)
-            } else if (live.playbackState == Player.STATE_ENDED && live.hasNextMediaItem()) {
-                advanceToNextAndPlay(live)
+            if (smartAdvanceRequested) {
+                smartAdvanceRequested = false
+                controller?.let { live -> advanceFromManualOrSmart(live, seed) }
             }
         }
+    }
+
+    private fun advanceFromManualOrSmart(c: MediaController, seed: Song) {
+        // Anything already in Media3 is intentional playback order (manual queue / playlist).
+        if (c.hasNextMediaItem()) {
+            advanceToNextAndPlay(c)
+            return
+        }
+        val candidate = smartCandidates.firstOrNull()
+        if (candidate == null) {
+            // The caller already attempted a hidden recommendation fetch. Stop cleanly here;
+            // the next user action / playback-end event may retry without creating a loop.
+            smartAdvanceRequested = false
+            return
+        }
+        smartCandidates.removeAt(0)
+        queueReasons[candidate.url] = "Smart Autoplay • hidden recommendation"
+        PlaybackPerfMetrics.beginTrackAction("smart-next", candidate.url)
+        PlaybackLookahead.promoteUserRequested(candidate, "smart-autoplay-next")
+        c.addMediaItem(toItem(candidate)) // only the immediate auto-next enters playback
+        queueRevision++
+        advanceToNextAndPlay(c)
+        refreshLookahead(c, "smart-autoplay-next")
     }
 
     private fun prepareDuplicateForInsert(c: MediaController, song: Song): Boolean {
@@ -423,11 +523,10 @@ object PlayerClient {
 
     fun addToQueue(song: Song) {
         val c = controller ?: return
-        smartContext = false
-        smartJob?.cancel()
         if (c.mediaItemCount == 0) playSongs(listOf(song), 0) else {
             if (!prepareDuplicateForInsert(c, song)) return
             queueReasons[song.url] = "Added by you"
+            manualQueueIds.add(song.url)
             c.addMediaItem(toItem(song))
             queueRevision++
             persistQueueState()
@@ -438,11 +537,10 @@ object PlayerClient {
 
     fun playNext(song: Song) {
         val c = controller ?: return
-        smartContext = false
-        smartJob?.cancel()
         if (c.mediaItemCount == 0) playSongs(listOf(song), 0) else {
             if (!prepareDuplicateForInsert(c, song)) return
             queueReasons[song.url] = "Play next • added by you"
+            manualQueueIds.add(song.url)
             c.addMediaItem((c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount), toItem(song))
             queueRevision++
             persistQueueState()
@@ -459,9 +557,10 @@ object PlayerClient {
             }.distinctBy { it.url }
         } else items
         if (fresh.isEmpty()) return
-        smartContext = false
-        smartJob?.cancel()
-        fresh.forEach { queueReasons[it.url] = "Added by you" }
+        fresh.forEach {
+            queueReasons[it.url] = "Added by you"
+            manualQueueIds.add(it.url)
+        }
         c.addMediaItems(fresh.map(::toItem))
         queueRevision++
         persistQueueState()
@@ -505,7 +604,13 @@ object PlayerClient {
             }
             smartContext && Settings.smartAutoplay.value -> {
                 currentSong?.let { seed ->
-                    scheduleSmartQueue(seed, force = true, advanceAfterAppend = true)
+                    smartAdvanceRequested = true
+                    if (smartCandidates.isNotEmpty()) {
+                        smartAdvanceRequested = false
+                        advanceFromManualOrSmart(c, seed)
+                    } else {
+                        scheduleSmartQueue(seed, force = true, advanceAfterAppend = true)
+                    }
                 }
             }
         }
@@ -513,22 +618,52 @@ object PlayerClient {
 
     fun prev() {
         val c = controller ?: return
+        stableBackgroundJob?.cancel()
         if (c.currentPosition > 3000) {
+            PlaybackPerfMetrics.beginTrackAction("previous-restart", currentSong?.url)
             c.seekTo(0)
             c.playWhenReady = true
             c.play()
         } else if (c.hasPreviousMediaItem()) {
+            val targetIndex = c.previousMediaItemIndex
+            val target = if (targetIndex in 0 until c.mediaItemCount) {
+                songs[c.getMediaItemAt(targetIndex).mediaId]
+            } else null
+            PlaybackPerfMetrics.beginTrackAction("previous-tap", target?.url)
+            PlaybackLookahead.promoteUserRequested(target, "manual-previous")
             c.playWhenReady = true
             c.seekToPreviousMediaItem()
-            c.prepare()
+            // Mirror the fast Next path: the existing prepared playlist does not need a full
+            // prepare() on every Previous. Recover only from IDLE.
+            if (c.playbackState == Player.STATE_IDLE) c.prepare()
             c.play()
+            refreshLookahead(c, "manual-previous")
         }
     }
 
     fun seekTo(ms: Long) {
-        controller?.seekTo(ms.coerceAtLeast(0))
-        positionMs = ms.coerceAtLeast(0)
+        val c = controller ?: return
+        val target = PlaybackSeekPolicy.clampTarget(ms, if (c.duration == C.TIME_UNSET) -1L else c.duration)
+        prioritizeTimelineSeek(c)
+        c.seekTo(target)
+        positionMs = target
         persistSongSession(force = true)
+    }
+
+    private fun prioritizeTimelineSeek(c: MediaController) {
+        // Current playback gets the connection first while a user scrubs. SmartCache/lyrics
+        // background work is restarted only after the seek has had a short clean window.
+        stableBackgroundJob?.cancel()
+        PlaybackLookahead.prioritizeCurrentSeek(currentSong)
+        val mediaId = c.currentMediaItem?.mediaId
+        seekSettleJob?.cancel()
+        seekSettleJob = scope.launch {
+            delay(PlaybackSeekPolicy.SEEK_NETWORK_QUIET_MS)
+            val live = controller ?: return@launch
+            if (live.currentMediaItem?.mediaId != mediaId) return@launch
+            refreshLookahead(live, "seek-settled")
+            scheduleStableBackgroundWork(live)
+        }
     }
 
     fun seekBy(deltaMs: Long) {
@@ -544,8 +679,9 @@ object PlayerClient {
         progressiveSeekSign = sign
         val extra = if (Settings.progressiveSeek.value) progressiveSeekLevel * 5_000L else 0L
         val effectiveDelta = sign * (kotlin.math.abs(deltaMs) + extra)
-        val duration = if (c.duration == C.TIME_UNSET) Long.MAX_VALUE else c.duration.coerceAtLeast(0L)
-        val target = (c.currentPosition + effectiveDelta).coerceAtLeast(0L).coerceAtMost(duration)
+        val duration = if (c.duration == C.TIME_UNSET) -1L else c.duration.coerceAtLeast(0L)
+        val target = PlaybackSeekPolicy.clampTarget(c.currentPosition + effectiveDelta, duration)
+        prioritizeTimelineSeek(c)
         c.seekTo(target)
         positionMs = target
         persistQueueState()
@@ -620,6 +756,8 @@ object PlayerClient {
         return (0 until c.mediaItemCount).mapNotNull { index ->
             val media = c.getMediaItemAt(index)
             val song = songs[media.mediaId] ?: return@mapNotNull null
+            val isCurrent = index == current
+            if (!QueueVisibilityPolicyV11214.shouldShow(index, current, song.url in manualQueueIds)) return@mapNotNull null
             QueueEntry(
                 index = index,
                 song = song,
@@ -641,7 +779,10 @@ object PlayerClient {
     fun removeQueueItem(index: Int) {
         val c = controller ?: return
         if (index !in 0 until c.mediaItemCount || index == c.currentMediaItemIndex) return
+        val removedId = c.getMediaItemAt(index).mediaId
         c.removeMediaItem(index)
+        manualQueueIds.remove(removedId)
+        queueReasons.remove(removedId)
         queueRevision++
         persistQueueState()
         refreshLookahead(c, "queue-remove")
@@ -662,13 +803,21 @@ object PlayerClient {
 
     fun clearUpcomingQueue() {
         val c = controller ?: return
-        val from = c.currentMediaItemIndex + 1
-        if (from < c.mediaItemCount) {
-            c.removeMediaItems(from, c.mediaItemCount)
+        var changed = false
+        for (i in c.mediaItemCount - 1 downTo c.currentMediaItemIndex + 1) {
+            val id = c.getMediaItemAt(i).mediaId
+            if (id in manualQueueIds) {
+                c.removeMediaItem(i)
+                manualQueueIds.remove(id)
+                queueReasons.remove(id)
+                changed = true
+            }
+        }
+        if (changed) {
             queueRevision++
             persistQueueState()
-            refreshLookahead(c, "queue-clear")
-            Bus.toast("Upcoming queue clear ho gayi")
+            refreshLookahead(c, "queue-clear-manual")
+            Bus.toast("Manual queue clear ho gayi")
         }
     }
 
@@ -749,6 +898,7 @@ object PlayerClient {
                         .put("artist", next.artist)
                         .put("duration", next.durationSec)
                         .put("thumb", next.thumb ?: "")
+                        .put("manual", next.url in manualQueueIds)
                 )
             }
             val root = JSONObject()
@@ -760,6 +910,7 @@ object PlayerClient {
                 .put("position", c.currentPosition.coerceAtLeast(0L))
                 .put("theme", Settings.theme.value)
                 .put("smartContext", smartContext)
+                .put("queueSchema", 2)
                 .put("upcoming", upcoming)
             Settings.putString("last_song_session", root.toString())
             if (song.artist.startsWith("Podcast •")) Podcasts.saveProgress(song.url, c.currentPosition.coerceAtLeast(0L))
@@ -787,12 +938,17 @@ object PlayerClient {
             if (savedTheme.isNotBlank()) Settings.setTheme(savedTheme)
             Settings.setLiveTheme(true)
 
+            manualQueueIds.clear()
+            clearSmartCandidates()
+            val queueSchema = root.optInt("queueSchema", 1)
             val upcomingJson = root.optJSONArray("upcoming") ?: JSONArray()
+            val legacySmart = queueSchema < 2 && root.optBoolean("smartContext", false)
             val upcoming = buildList {
                 for (i in 0 until upcomingJson.length().coerceAtMost(8)) {
                     val o = upcomingJson.optJSONObject(i) ?: continue
                     val nextUrl = o.optString("url").trim()
-                    if (nextUrl.isBlank() || nextUrl == song.url) continue
+                    if (nextUrl.isBlank() || nextUrl == song.url || legacySmart) continue
+                    if (o.optBoolean("manual", false)) manualQueueIds.add(nextUrl)
                     add(
                         Song(
                             url = nextUrl,
@@ -808,7 +964,9 @@ object PlayerClient {
             restoredSessionMediaId = song.url
             smartContext = root.optBoolean("smartContext", false)
             queueReasons[song.url] = "Restored session"
-            upcoming.forEach { queueReasons[it.url] = if (smartContext) "Restored Smart Autoplay" else "Restored up next" }
+            upcoming.forEach { next ->
+                queueReasons[next.url] = if (next.url in manualQueueIds) "Restored manual queue" else "Restored playback order"
+            }
             c.playWhenReady = false
             c.setMediaItems((listOf(song) + upcoming).map(::toItem), 0, position)
             // prepare() while paused pre-buffers the restored current item without audible autoplay.
@@ -836,9 +994,11 @@ object PlayerClient {
                         .put("artist", song.artist)
                         .put("duration", song.durationSec)
                         .put("thumb", song.thumb ?: "")
+                        .put("manual", song.url in manualQueueIds)
                 )
             }
             val root = JSONObject()
+                .put("queueSchema", 2)
                 .put("index", c.currentMediaItemIndex.coerceAtLeast(0))
                 .put("position", c.currentPosition.coerceAtLeast(0L))
                 .put("items", arr)
@@ -852,11 +1012,14 @@ object PlayerClient {
             if (raw.isBlank()) return@runCatching
             val root = JSONObject(raw)
             val arr = root.optJSONArray("items") ?: return@runCatching
+            manualQueueIds.clear()
+            clearSmartCandidates()
             val restored = buildList {
                 for (i in 0 until arr.length().coerceAtMost(150)) {
                     val o = arr.optJSONObject(i) ?: continue
                     val url = o.optString("url")
                     if (url.isBlank()) continue
+                    if (o.optBoolean("manual", false)) manualQueueIds.add(url)
                     add(
                         Song(
                             url = url,
@@ -871,7 +1034,9 @@ object PlayerClient {
             if (restored.isEmpty()) return@runCatching
             val index = root.optInt("index", 0).coerceIn(0, restored.lastIndex)
             val position = root.optLong("position", 0L).coerceAtLeast(0L)
-            restored.forEach { queueReasons[it.url] = "Restored queue" }
+            restored.forEach { restoredSong ->
+                queueReasons[restoredSong.url] = if (restoredSong.url in manualQueueIds) "Restored manual queue" else "Restored playback order"
+            }
             c.setMediaItems(restored.map(::toItem), index, position)
             c.prepare()
             c.pause()

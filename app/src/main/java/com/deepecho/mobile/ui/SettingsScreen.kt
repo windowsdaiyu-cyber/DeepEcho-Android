@@ -262,7 +262,7 @@ fun SettingsScreen(onBack: (() -> Unit)? = null) {
                 Column(Modifier.weight(1f)) {
                     Text("Taste-aware next songs")
                     Text(
-                        "Home/Search se play karne par DeepEcho similar songs smartly queue karega.",
+                        "Home/Search se play karne par recommendations internal rahengi; Queue sirf aapke Play Next / Add to Queue songs dikhayegi.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

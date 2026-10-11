@@ -46,14 +46,14 @@ enum class PlayerModeV1128(val label: String) {
 }
 
 /**
- * v1.12.10: Only real player presentation tabs are exposed here.
- * Visualizer remains an internal audio-reactive utility (Floating Lyrics still depends on
- * AudioReactive), while Ambient is entered exclusively from the existing Ambient switch.
+ * v1.12.11: Visualizer stays internal, while Ambient is a clean boxed entry beside Minimal.
+ * The actual Ambient ON/OFF switch remains inside the fullscreen Ambient surface.
  */
-internal val VisiblePlayerModesV11210 = listOf(
+internal val VisiblePlayerModesV11211 = listOf(
     PlayerModeV1128.Artwork,
     PlayerModeV1128.Lyrics,
-    PlayerModeV1128.Minimal
+    PlayerModeV1128.Minimal,
+    PlayerModeV1128.Ambient
 )
 
 @Composable
@@ -62,7 +62,7 @@ fun PlayerModeSelectorV1128(mode: PlayerModeV1128, onSelect: (PlayerModeV1128) -
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        VisiblePlayerModesV11210.forEach { item ->
+        VisiblePlayerModesV11211.forEach { item ->
             FilterChip(
                 selected = mode == item,
                 onClick = { onSelect(item) },

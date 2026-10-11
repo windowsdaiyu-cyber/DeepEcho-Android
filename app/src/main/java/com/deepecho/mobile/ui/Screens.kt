@@ -107,7 +107,6 @@ private val homePlaylistShelfCache = ConcurrentHashMap<String, List<RemotePlayli
 fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
     val history by Store.history.collectAsState()
     val liked by Store.liked.collectAsState()
-    val smartAutoplay by Settings.smartAutoplay.collectAsState()
     val selectedMood by ExperienceV1128.selectedMood.collectAsState()
     val mixes = remember(history, liked, selectedMood) { TasteEngine.homeMixes(history, liked) }
     val artists by produceState<List<TopArtist>>(
@@ -198,34 +197,16 @@ fun HomeScreen(onOpenSearch: () -> Unit, onOpenSettings: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .62f))
-                            .clickable { Settings.setSmartAutoplay(!smartAutoplay) }
-                            .padding(horizontal = 14.dp, vertical = 9.dp)
-                    ) {
-                        Text(
-                            if (smartAutoplay) "Smart Autoplay • ON" else "Smart Autoplay • OFF",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (smartAutoplay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Text(
-                        QuoteDeck.current(),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                // v1.12.11: Home stays visually clean. Smart Autoplay remains fully available
+                // in Settings, while the rotating DeepEcho quote gets enough width to render.
+                Text(
+                    QuoteDeck.current(),
+                    maxLines = 3,
+                    overflow = TextOverflow.Clip,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 

@@ -1,0 +1,47 @@
+DeepEcho Android v1.12.11 - Instant Playback + Home/Player UI Fix
+
+Changed:
+- app/build.gradle.kts
+  * versionName 1.12.11
+  * versionCode 40
+- app/src/main/java/com/deepecho/mobile/player/PlaybackService.kt
+  * lower startup playback buffer threshold for faster first audio
+  * keeps a larger rebuffer threshold for stability
+- app/src/main/java/com/deepecho/mobile/player/PlaybackLookahead.kt
+  * user Play/Next/Previous stream resolve gets strict priority
+  * speculative next-track work yields while foreground resolve is active
+  * nearest-next CDN probe also works on metered connections with a tiny 8 KiB probe
+  * Data Saver still disables the probe
+- app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt
+  * Smart Autoplay recommendation network work is deferred until current playback gets a head start
+  * Previous now mirrors the fast Next path and only prepare()s from IDLE
+  * manual Previous promotes its target through the existing stream lookahead resolver
+- app/src/main/java/com/deepecho/mobile/net/YouTubeApi.kt
+  * weak Android-reported network links temporarily prefer lighter audio for faster startup
+  * normal/unknown bandwidth continues to use existing Wi-Fi/mobile quality preferences
+- app/src/main/java/com/deepecho/mobile/ui/Screens.kt
+  * removed Smart Autoplay pill from Home
+  * Home rotating quote now renders full-width, up to three lines
+- app/src/main/java/com/deepecho/mobile/ui/PlayerExperienceV1128.kt
+  * visible modes are Artwork / Lyrics / Minimal / Ambient
+  * Visualizer remains hidden
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+  * Ambient is a boxed mode entry beside Minimal
+  * standalone Ambient switches removed from normal player
+  * fullscreen Ambient internal switch preserved
+  * artwork is constrained by both available width and height to prevent metadata overlap
+- app/src/test/java/com/deepecho/mobile/ui/PlayerModesV11211Test.kt
+  * updated visible player-mode expectations
+- root build script/version labels updated for v1.12.11
+
+Protected / intentionally unchanged from v1.12.10:
+- Downloads.kt
+- LyricsOrchestrator.kt
+- FloatingLyricsService.kt
+- SmartCache.kt
+- Theme.kt
+- Store.kt
+- TasteEngine.kt
+- artwork quality helper / shared Art() implementation
+- long-press Quick Actions
+- Premium Home content/recommendation structure

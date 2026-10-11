@@ -1,0 +1,16 @@
+DeepEcho Android v1.12.14
+
+Modified:
+- app/build.gradle.kts
+- app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt
+- app/src/main/java/com/deepecho/mobile/ui/QueueSheet.kt
+- app/src/main/java/com/deepecho/mobile/ui/SettingsScreen.kt
+- build_apk.bat
+- README.md
+
+Added:
+- app/src/main/java/com/deepecho/mobile/player/QueueVisibilityPolicyV11214.kt
+- app/src/test/java/com/deepecho/mobile/player/QueueVisibilityV11214Test.kt
+- TEST-NOTES-v1.12.14-MANUAL-QUEUE-HIDDEN-AUTOPLAY.md
+- TEST-REPORT-v1.12.14-MANUAL-QUEUE-HIDDEN-AUTOPLAY.md
+- BUILD-TEST-APK-v1.12.14.bat (renamed root launcher)

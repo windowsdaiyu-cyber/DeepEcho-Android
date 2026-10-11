@@ -56,6 +56,7 @@ object PlaybackLookahead {
     @Volatile private var burstCount = 0
     @Volatile private var burstUntil = 0L
     @Volatile private var memoryPressureUntil = 0L
+    @Volatile private var foregroundResolveUrl: String? = null
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -137,18 +138,38 @@ object PlaybackLookahead {
         val keep = setOf(song.url)
         cancelWaitingWarmJobsExcept(keep)
         if (isLocal(song)) {
+            foregroundResolveUrl = null
             states[song.url] = Prepared(song.url, Level.LOCAL_READY, generation.get(), now(), reason)
             return
         }
+
+        // User-tapped Play/Next/Previous owns resolver priority. Nearby speculative lookahead waits
+        // until this direct stream URL is known, so slow connections are not split between several
+        // NewPipe extractor requests at the exact moment the listener expects audio.
+        foregroundResolveUrl = song.url
         scope.launch {
-            runCatching { YouTubeApi.resolve(song.url) }
-                .onSuccess {
-                    states[song.url] = Prepared(song.url, Level.READY, generation.get(), now(), reason)
-                }
-                .onFailure {
-                    states[song.url] = Prepared(song.url, Level.FAILED, generation.get(), now(), reason)
-                }
+            try {
+                runCatching { YouTubeApi.resolve(song.url) }
+                    .onSuccess {
+                        states[song.url] = Prepared(song.url, Level.READY, generation.get(), now(), reason)
+                    }
+                    .onFailure {
+                        states[song.url] = Prepared(song.url, Level.FAILED, generation.get(), now(), reason)
+                    }
+            } finally {
+                if (foregroundResolveUrl == song.url) foregroundResolveUrl = null
+            }
         }
+    }
+
+    /**
+     * A timeline scrub should not fight speculative NewPipe/CDN work for bandwidth.
+     * Already-ready next tracks are retained; unresolved speculative work yields briefly.
+     */
+    fun prioritizeCurrentSeek(song: Song?) {
+        val keep = if (song != null) setOf(song.url) else emptySet()
+        cancelWaitingWarmJobsExcept(keep)
+        burstUntil = maxOf(burstUntil, now() + PlaybackSeekPolicy.SEEK_NETWORK_QUIET_MS)
     }
 
     fun invalidateQueue() {
@@ -179,14 +200,30 @@ object PlaybackLookahead {
                     else -> 180L + ((ordinal - 2).coerceAtLeast(0) * 80L).coerceAtMost(400L)
                 }
                 if (baseDelay > 0) delay(baseDelay)
+
+                // Do not let speculative next-track extraction compete with a real user action.
+                // Bound the wait so a failed/stalled foreground request cannot freeze lookahead.
+                val foreground = foregroundResolveUrl
+                if (foreground != null && foreground != song.url) {
+                    val waitStart = now()
+                    val maxForegroundWait = if (passive) 5_000L else 4_000L
+                    while (foregroundResolveUrl != null &&
+                        foregroundResolveUrl != song.url &&
+                        now() - waitStart < maxForegroundWait
+                    ) {
+                        delay(45L)
+                    }
+                }
+
                 gate.withPermit {
                     val resolved = YouTubeApi.resolve(song.url)
                     if (gen != generation.get() && !passive) return@withPermit
                     states[song.url] = Prepared(song.url, target, gen, now(), reason)
                     if (target == Level.READY && ordinal == 0 && shouldProbeNetwork()) {
-                        // Tiny bounded range probe. It warms DNS/TLS/CDN state without downloading
-                        // whole tracks. Failure is ignored; source resolution is already useful.
-                        runCatching { probeInitialBytes(resolved.url) }
+                        // Warm DNS/TLS/CDN for ONLY the nearest next track. Metered/mobile gets
+                        // a much smaller probe; Data Saver keeps this fully disabled.
+                        val probeBytes = if (isMetered()) 8 * 1024 else 32 * 1024
+                        runCatching { probeInitialBytes(resolved.url, probeBytes) }
                     }
                 }
             } catch (_: Throwable) {
@@ -257,19 +294,20 @@ object PlaybackLookahead {
         return !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
-    private fun shouldProbeNetwork(): Boolean = !Settings.dataSaverMode.value && !isMetered()
+    private fun shouldProbeNetwork(): Boolean = !Settings.dataSaverMode.value
 
-    private fun probeInitialBytes(url: String) {
+    private fun probeInitialBytes(url: String, byteCount: Int) {
+        val bytes = byteCount.coerceIn(4 * 1024, 32 * 1024)
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", Net.UA)
-            .header("Range", "bytes=0-32767")
+            .header("Range", "bytes=0-${bytes - 1}")
             .build()
         Net.client.newCall(request).execute().use responseBlock@ { response ->
             if (!response.isSuccessful && response.code != 206) return@responseBlock
             val input = response.body?.byteStream() ?: return@responseBlock
             val buffer = ByteArray(8 * 1024)
-            var remaining = 32 * 1024
+            var remaining = bytes
             while (remaining > 0) {
                 val n = input.read(buffer, 0, minOf(buffer.size, remaining))
                 if (n <= 0) break

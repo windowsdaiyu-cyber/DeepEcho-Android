@@ -1,0 +1,35 @@
+DeepEcho Android v1.12.12 - Large Artwork + Fast Seek
+
+Changed:
+- app/build.gradle.kts
+  * versionName 1.12.12
+  * versionCode 41
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt
+  * Artwork mode uses a large width-responsive square cover (up to 392dp)
+  * Artwork layout scrolls on short screens instead of shrinking/overlapping metadata
+  * Lyrics/Minimal/Ambient layouts keep their existing behavior
+- app/src/main/java/com/deepecho/mobile/player/PlaybackService.kt
+  * Media3 CLOSEST_SYNC seek policy
+  * bounded 20s back buffer
+  * v1.12.11 320ms startup/seek buffer kept unchanged
+- app/src/main/java/com/deepecho/mobile/player/PlayerClient.kt
+  * timeline seeks temporarily pause low-priority background playback work
+  * lookahead/background work restores after a short settle window
+- app/src/main/java/com/deepecho/mobile/player/PlaybackLookahead.kt
+  * unresolved speculative work yields to user timeline seek
+- app/src/main/java/com/deepecho/mobile/player/PlaybackSeekPolicy.kt
+  * pure/testable seek policy constants and target clamp
+- app/src/test/java/com/deepecho/mobile/player/PlaybackSeekV11212Test.kt
+  * focused seek-policy regression tests
+- root build labels / README updated for v1.12.12
+
+Intentionally unchanged:
+- YouTubeApi stream selection / v1.12.11 weak-network startup logic
+- Downloads
+- SmartCache implementation
+- LyricsOrchestrator / OCR / word-by-word / Romanized
+- Floating Lyrics
+- Store / TasteEngine / theme engine
+- shared artwork quality loader
+- Premium Home / Search layouts
+- long-press Quick Actions

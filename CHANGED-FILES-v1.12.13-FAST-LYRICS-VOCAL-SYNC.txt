@@ -1,0 +1,17 @@
+DeepEcho Android v1.12.13 — Fast Lyrics + Vocal Start Sync
+
+Changed:
+- app/build.gradle.kts
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsOrchestrator.kt
+- app/src/main/java/com/deepecho/mobile/lyrics/LyricsRuntimeSync.kt
+- app/src/main/java/com/deepecho/mobile/ui/PlayerScreen.kt (Ambient pre-vocal presentation only)
+- app/src/test/java/com/deepecho/mobile/lyrics/LyricsFastPathV11213Test.kt
+- build_apk.bat / root build launcher version
+
+Protected / intentionally untouched:
+- PlaybackService / PlayerClient / PlaybackLookahead / seek policy
+- Downloads
+- YouTube stream resolver
+- FloatingLyricsService
+- artwork loader
+- themes / Home / Search recommendation logic

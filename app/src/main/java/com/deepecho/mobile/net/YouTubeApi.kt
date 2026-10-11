@@ -53,9 +53,19 @@ object YouTubeApi {
         val ctx = appContext ?: return Settings.quality.value
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return Settings.quality.value
         val caps = cm.activeNetwork?.let(cm::getNetworkCapabilities)
-        return if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+        val preferred = if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
             caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
         ) Settings.wifiQuality.value else Settings.mobileQuality.value
+
+        // v1.12.11: When Android reports a genuinely weak link, prefer a lighter audio stream
+        // for faster time-to-first-audio instead of insisting on a high-bitrate startup.
+        // Unknown/normal bandwidth keeps the user's existing Wi-Fi/mobile quality preference.
+        val downKbps = caps?.linkDownstreamBandwidthKbps ?: 0
+        return when {
+            downKbps in 1..1_199 -> 0
+            downKbps in 1_200..2_499 -> preferred.coerceAtMost(1)
+            else -> preferred
+        }
     }
 
     private val searchCache = ConcurrentHashMap<String, Pair<Long, List<Song>>>()

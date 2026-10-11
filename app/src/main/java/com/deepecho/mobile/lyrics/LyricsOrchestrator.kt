@@ -90,19 +90,51 @@ object LyricsOrchestrator {
         val exact = runCatching { LrclibProvider.exact(song, meta) }.getOrNull()
         if (exact != null) {
             LyricsDiagnostics.add(song.url, "exact LRCLIB metadata=${exact.score.total}; suspicious=${exact.score.suspicious}; ${exact.score.reason}")
-            if (!forceFresh && isImmediateFastPath(exact, meta)) {
+            if (!forceFresh && canUseProviderSyncWithoutAudio(song, exact, meta)) {
                 val result = exact.lyrics.copy(
                     source = "LRCLIB • Verified",
                     verification = "fast_path_verified",
-                    verified = true,
+                    verified = exact.score.total >= 92,
                     confidence = exact.score.total,
                     metadataConfidence = exact.score.total,
-                    alignmentConfidence = if (exact.lyrics.synced.isNotEmpty()) 92 else 0
+                    alignmentConfidence = if (exact.lyrics.synced.isNotEmpty()) 92 else 0,
+                    firstVocalOnsetMs = trustedVocalOnset(exact.lyrics)
                 )
                 cache(song, result)
                 LyricsProgress.clear(song.url)
                 LyricsDiagnostics.add(song.url, "fast path accepted in ${System.currentTimeMillis() - started}ms")
                 return result
+            }
+        }
+
+        // A Lyrics-tab result is already scoped to this exact playback URL and has passed the
+        // lightweight Search availability policy. Consume a deliverable synced attachment BEFORE
+        // caption verification so tapping a row labelled SYNCED LYRICS cannot sit in a second,
+        // stricter verification queue and then appear empty in the player. Plain-text attachments
+        // remain a reference only; the stages below still get a chance to ground timing.
+        var attachedTextFallback: Lyrics? = null
+        LyricsSearchAvailabilityIndex.attachedForPlayback(song)?.let { attached ->
+            val fallback = if (LyricsFeatureFlags.contextualTextRepair) {
+                LyricsTextRefiner.refine(attached.lyrics).lyrics
+            } else attached.lyrics
+            if (attached.availabilityState.deliverable &&
+                (fallback.synced.isNotEmpty() || !fallback.plain.isNullOrBlank())) {
+                if (attached.availabilityState == LyricsAvailabilityState.VERIFIED_TEXT) {
+                    attachedTextFallback = fallback.copy(synced = emptyList(), estimatedSync = false)
+                    LyricsDiagnostics.add(
+                        song.url,
+                        "lyrics-search attached text retained for current sync: ${attached.sourceProvider}"
+                    )
+                } else {
+                    val guarded = fallback.copy(firstVocalOnsetMs = trustedVocalOnset(fallback))
+                    cache(song, guarded)
+                    LyricsProgress.clear(song.url)
+                    LyricsDiagnostics.add(
+                        song.url,
+                        "lyrics-search attached synced result accepted immediately: ${attached.sourceProvider}; state=${attached.availabilityState}"
+                    )
+                    return guarded
+                }
             }
         }
 
@@ -131,37 +163,6 @@ object LyricsOrchestrator {
             LyricsDiagnostics.add(song.url, "exact candidate rejected")
         }
 
-        // Search -> Lyrics may have already verified a fallback for this exact playback source.
-        // The regular current provider above always gets first chance. Only after it cannot deliver
-        // do we use the descriptor attached by the Lyrics tab, feeding the result into this SAME
-        // lyrics model/UI rather than creating a special player or provider-specific renderer.
-        var attachedTextFallback: Lyrics? = null
-        LyricsSearchAvailabilityIndex.attachedForPlayback(song)?.let { attached ->
-            val fallback = if (LyricsFeatureFlags.contextualTextRepair) {
-                LyricsTextRefiner.refine(attached.lyrics).lyrics
-            } else attached.lyrics
-            if (attached.availabilityState.deliverable &&
-                (fallback.synced.isNotEmpty() || !fallback.plain.isNullOrBlank())) {
-                if (attached.availabilityState == LyricsAvailabilityState.VERIFIED_TEXT) {
-                    // Keep plain verified text as a reference while the existing alignment/caption
-                    // stages below get a chance to create timing for THIS playback version.
-                    attachedTextFallback = fallback.copy(synced = emptyList(), estimatedSync = false)
-                    LyricsDiagnostics.add(
-                        song.url,
-                        "lyrics-search attached text retained for current sync: ${attached.sourceProvider}"
-                    )
-                } else {
-                    cache(song, fallback)
-                    LyricsProgress.clear(song.url)
-                    LyricsDiagnostics.add(
-                        song.url,
-                        "lyrics-search attached fallback used: ${attached.sourceProvider}; state=${attached.availabilityState}"
-                    )
-                    return fallback
-                }
-            }
-        }
-
         // Stage E: rank alternative provider candidates. Generic titles never get metadata-only
         // trust; when captions are unavailable we require a strong performer+duration identity.
         LyricsProgress.set(song.url, "Finding better lyrics…")
@@ -170,17 +171,19 @@ object LyricsOrchestrator {
         LyricsDiagnostics.add(song.url, "provider alternatives=${alternatives.size}")
         for (candidate in alternatives) {
             if (candidate.score.total < 42) continue
-            if (!candidate.score.suspicious && candidate.score.total >= 91 && meta.qualifiers.isEmpty()) {
+            if (canUseProviderSyncWithoutAudio(song, candidate, meta)) {
                 val result = candidate.lyrics.copy(
                     source = "LRCLIB • Verified",
-                    verification = "strong_metadata_verified",
-                    verified = true,
+                    verification = "provider_sync_fast_path",
+                    verified = candidate.exactLookup && candidate.score.total >= 92,
                     metadataConfidence = candidate.score.total,
-                    confidence = candidate.score.total,
-                    alignmentConfidence = if (candidate.lyrics.synced.isNotEmpty()) 88 else 0
+                    confidence = maxOf(candidate.lyrics.confidence, candidate.score.total),
+                    alignmentConfidence = if (candidate.lyrics.synced.isNotEmpty()) 88 else 0,
+                    firstVocalOnsetMs = trustedVocalOnset(candidate.lyrics)
                 )
                 cache(song, result)
                 LyricsProgress.clear(song.url)
+                LyricsDiagnostics.add(song.url, "provider synced fast path accepted: ${candidate.provider}; score=${candidate.score.total}")
                 return result
             }
             verifyAndRepair(candidate, meta, captions())?.let { repaired ->
@@ -324,13 +327,47 @@ object LyricsOrchestrator {
         return null
     }
 
-    private fun isImmediateFastPath(candidate: LyricsCandidate, meta: NormalizedTrackMetadata): Boolean {
-        if (candidate.score.suspicious || meta.genericTitle || meta.qualifiers.isNotEmpty()) return false
-        if (!candidate.exactLookup) return false
-        if (candidate.score.total < 92 || candidate.score.title < 90) return false
-        if (meta.performerCandidates.isNotEmpty() && candidate.score.performer < 80) return false
-        if (candidate.score.duration < 72) return false
-        return candidate.lyrics.synced.isNotEmpty() || !candidate.lyrics.plain.isNullOrBlank()
+    /**
+     * Playback-time acceptance for provider-native synchronized lyrics. This intentionally mirrors
+     * the Search lyrics badge policy so a track cannot say SYNCED LYRICS in Search and then get
+     * rejected by a stricter player-only gate. Variant/cover/live uploads still require grounding
+     * against the current audio and never take this shortcut.
+     */
+    internal fun canUseProviderSyncWithoutAudio(
+        song: Song,
+        candidate: LyricsCandidate,
+        meta: NormalizedTrackMetadata
+    ): Boolean {
+        if (candidate.lyrics.synced.size < 2 || candidate.lyrics.estimatedSync) return false
+
+        val exceptionallyStrongGeneric = meta.genericTitle && candidate.exactLookup &&
+            candidate.score.title >= 96 && candidate.score.performer >= 92 &&
+            candidate.score.duration >= 90 && candidate.score.total >= 90
+        if (candidate.score.suspicious && !exceptionallyStrongGeneric) return false
+        if (meta.genericTitle && !exceptionallyStrongGeneric) return false
+        if (meta.qualifiers.isNotEmpty() || candidate.requiresAudioVerification) return false
+        if (candidate.score.title < 86 || candidate.score.total < 86) return false
+        if (meta.performerCandidates.isNotEmpty() && candidate.score.performer < 72) return false
+        if (song.durationSec > 20 && candidate.durationSec > 20 && candidate.score.duration < 58) return false
+
+        val original = meta.originalTitle.lowercase()
+        val explicitVideoVariant = listOf(
+            "official video", "music video", "lyric video", "lyrics video", "visualizer", "live video"
+        ).any { original.contains(it) }
+        if (explicitVideoVariant) return false
+        if (candidate.durationSec > 20 && song.durationSec > 20 &&
+            kotlin.math.abs(candidate.durationSec - song.durationSec.toDouble()) > 5.5) return false
+
+        return (candidate.exactLookup && candidate.score.total >= 90) ||
+            (!candidate.requiresAudioVerification && candidate.score.total >= 88)
+    }
+
+    private fun trustedVocalOnset(lyrics: Lyrics): Long? {
+        lyrics.firstVocalOnsetMs?.let { return it.coerceAtLeast(0L) }
+        if (lyrics.estimatedSync) return null
+        return lyrics.synced.firstOrNull { line ->
+            line.text.trim().let { it.isNotBlank() && it != "♪" }
+        }?.timeMs?.coerceAtLeast(0L)
     }
 
     private fun verifyAndRepair(
@@ -358,6 +395,7 @@ object LyricsOrchestrator {
                 metadataConfidence = candidate.score.total,
                 confidence = candidate.score.total,
                 verification = "metadata_verified_no_audio",
+                firstVocalOnsetMs = trustedVocalOnset(candidate.lyrics),
                 verified = false
             )
         }
@@ -403,7 +441,7 @@ object LyricsOrchestrator {
             audioConfidence = verification.agreement,
             alignmentConfidence = if (candidate.lyrics.synced.isNotEmpty()) verification.timingAgreement else 0,
             verification = "audio_verified",
-            firstVocalOnsetMs = verification.firstVocalOnsetMs,
+            firstVocalOnsetMs = verification.firstVocalOnsetMs ?: trustedVocalOnset(candidate.lyrics),
             verified = true,
             variant = meta.qualifiers.joinToString(" + ").ifBlank { null }
         )
